@@ -74,63 +74,40 @@ async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.defer(ephemeral=True) # টাইমআউট এড়াতে
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.followup.send(f"🧹 Deleted **{len(deleted)}** messages.")
+# এটি আপনার ইম্পোর্ট সেকশনে যোগ করুন
+import re
 
-# --- ১. এন্টিলিংক ডাটা (এটি কোডের একদম উপরে ইম্পোর্টের পরে রাখলে ভালো হয়) ---
+# এটি আপনার ভেরিয়েবল সেকশনে (যেখানে টোকেন আছে তার আশেপাশে) যোগ করুন
 anti_link_status = {"enabled": False, "blocked_links": []}
 
-# --- ২. এন্টিলিংক ড্যাশবোর্ড ভিউ ---
-class AntiLinkView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="Enable/Disable Anti-Link", style=discord.ButtonStyle.primary)
-    async def toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
-        anti_link_status["enabled"] = not anti_link_status["enabled"]
-        status = "Enabled" if anti_link_status["enabled"] else "Disabled"
-        await interaction.response.send_message(f"✅ Anti-Link is now **{status}**", ephemeral=True)
-
-# --- ৩. এন্টিলিংক ড্যাশবোর্ড কমান্ড ---
-@bot.tree.command(name="antilink", description="Open Anti-Link Security Dashboard")
-async def antilink(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ Only Admins can use this dashboard!", ephemeral=True)
-    
-    embed = discord.Embed(
-        title="🛡️ Anti-Link Security Dashboard",
-        description="Click the button below to turn Anti-Link ON or OFF.",
-        color=discord.Color.orange()
-    )
-    await interaction.response.send_message(embed=embed, view=AntiLinkView(), ephemeral=True)
-
-# --- ৪. লিংক ব্লক লিস্টে অ্যাড করার কমান্ড ---
-@bot.tree.command(name="blocklink", description="Add a link/keyword to the blocklist")
-@app_commands.describe(link="Example: discord.gg or .com")
-async def blocklink(interaction: discord.Interaction, link: str):
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ No permission!", ephemeral=True)
-    
-    link = link.lower()
-    if link not in anti_link_status["blocked_links"]:
-        anti_link_status["blocked_links"].append(link)
-        await interaction.response.send_message(f"✅ Added `{link}` to blocklist.", ephemeral=True)
-    else:
-        await interaction.response.send_message("❌ This is already in the blocklist.", ephemeral=True)
-
-# --- ৫. এন্টিলিংক লজিক (এটি bot.event এর নিচে যোগ করুন) ---
+# আপনার বিদ্যমান on_message ইভেন্টটি খুঁজে বের করুন এবং সেটিকে এভাবে আপডেট করুন:
 @bot.event
 async def on_message(message):
+    # বট নিজের মেসেজ চেক করবে না
     if message.author.bot:
         return
 
+    # এন্টি-লিংক যদি এনাবল থাকে তবে চেক করবে
     if anti_link_status["enabled"]:
-        for blocked in anti_link_status["blocked_links"]:
-            if blocked in message.content.lower():
-                await message.delete()
-                await message.channel.send(f"🚫 {message.author.mention}, links are not allowed here!", delete_after=5)
-                return # মেসেজ ডিলিট হলে আর প্রসেস করার দরকার নেই
+        # মেসেজে কোনো ইউআরএল/লিংক আছে কি না তা রেজেক্স দিয়ে চেক করা (বেশি কার্যকর)
+        url_pattern = r"(https?://\S+|www\.\S+|discord\.gg/\S+)"
+        found_links = re.findall(url_pattern, message.content.lower())
+        
+        for link in found_links:
+            # যদি কোনো নির্দিষ্ট লিংক ব্লক করা থাকে তবে সেটি চেক করবে
+            # অথবা সব লিংক বন্ধ করতে চাইলে সরাসরি ডিলিট করবে
+            for blocked in anti_link_status["blocked_links"]:
+                if blocked in link:
+                    try:
+                        await message.delete()
+                        await message.channel.send(f"🚫 {message.author.mention}, এই লিংকটি এখানে নিষিদ্ধ!", delete_after=5)
+                        return
+                    except:
+                        print("মেসেজ ডিলিট করার পারমিশন নেই।")
 
-    await bot.process_commands(message) # এটি অবশ্যই রাখবেন যাতে অন্য কমান্ডগুলো কাজ করে
-    
+    # আপনার অন্য কমান্ডগুলো চলার জন্য এটি মাস্ট লাগবে
+    await bot.process_commands(message)
+
 
 if __name__ == "__main__":
     bot.run(TOKEN)
