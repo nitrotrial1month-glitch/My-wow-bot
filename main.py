@@ -36,35 +36,29 @@ class MyBot(commands.Bot):
         intents.message_content = True
         intents.members = True 
         super().__init__(command_prefix="!", intents=intents)
-
     async def setup_hook(self):
-        # এই অংশটি বাটনগুলোকে বটের মেমোরিতে সেভ করে রাখে
+        # বাটনগুলো মেমোরিতে সেভ করা (যাতে Interaction Failed না আসে)
         try:
             from cogs.ticket import TicketLaunch, TicketControl
-            # আমরা এখানে ভিউগুলোকে অ্যাড করছি যেন Interaction Failed না আসে
+            # আমরা এখানে দুটো ভিউই রেজিস্টার করছি
             self.add_view(TicketLaunch())
-            self.add_view(TicketControl())
-            print("✅ বাটন এবং ড্রপডাউন সচল হয়েছে (Views Registered)")
+            self.add_view(TicketControl()) 
+            print("✅ Ticket Buttons Registered Successfully!")
         except Exception as e:
-            print(f"⚠️ ভিউ লোড করতে সমস্যা: {e}")
+            print(f"⚠️ View Registration Error: {e}")
 
-        # cogs ফোল্ডার থেকে ফাইল লোড করা
+        # Cog লোড করা
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
-                        print(f"✅ Cog লোড হয়েছে: {filename}")
+                        print(f"✅ Loaded: {filename}")
                     except Exception as e:
-                        print(f"❌ Cog লোড এরর {filename}: {e}")
+                        print(f"❌ Error: {e}")
         
-        # সব স্ল্যাশ কমান্ড সিঙ্ক করা
-        try:
-            await self.tree.sync()
-            print("✅ স্ল্যাশ কমান্ড সিঙ্ক হয়েছে")
-        except Exception as e:
-            print(f"❌ সিঙ্ক এরর: {e}")
-
+        await self.tree.sync()
+    
 bot = MyBot()
 
 @bot.event
