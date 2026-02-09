@@ -4,6 +4,7 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ui import View, Button, Modal, TextInput
 from typing import Optional
+import datetime
 
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -14,14 +15,14 @@ server_data = {
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
-        "description": "Welcome {member}!\n\n📜 Rules: <#ID>\n💬 Chat: <#ID>",
+        "description": "Welcome {member}!",
         "image_url": None,
         "color": 0x00ff00
     },
     "leave": {
         "channel_id": None,
         "title": "Goodbye from the Server!",
-        "description": "{member} has left us. We will miss you!\n\n👋 Come back soon!",
+        "description": "{member} has left us. We will miss you!",
         "image_url": None,
         "color": 0xff0000
     }
@@ -52,7 +53,14 @@ async def on_member_join(member):
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
+            # জয়েনিং ডেট ও সার্ভার নাম
+            join_date = member.joined_at.strftime("%d-%m-%Y")
+            guild_name = member.guild.name
+            
             desc = config["description"].replace("{member}", member.mention)
+            desc += f"\n\n🏟️ **Server:** {guild_name}"
+            desc += f"\n📅 **Joined At:** {join_date}"
+            
             embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
             if config["image_url"]: embed.set_image(url=config["image_url"])
             embed.set_thumbnail(url=member.display_avatar.url)
@@ -65,7 +73,16 @@ async def on_member_remove(member):
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
+            # জয়েনিং ও লিভ ডেট
+            join_date = member.joined_at.strftime("%d-%m-%Y") if member.joined_at else "Unknown"
+            leave_date = datetime.datetime.now().strftime("%d-%m-%Y")
+            guild_name = member.guild.name
+            
             desc = config["description"].replace("{member}", f"**{member.name}**")
+            desc += f"\n\n🏟️ **Server:** {guild_name}"
+            desc += f"\n📥 **Joined:** {join_date}"
+            desc += f"\n📤 **Left:** {leave_date}"
+            
             embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
             if config["image_url"]: embed.set_image(url=config["image_url"])
             embed.set_thumbnail(url=member.display_avatar.url)
@@ -143,6 +160,18 @@ async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.send_message(f"🧹 Cleared {amount} messages.", ephemeral=True)
 
 # ================= MESSAGE LOGIC =================
+
+@bot.event
+async def on_message(message):
+    if message.author.bot: return
+    if server_data["anti_link"]["enabled"]:
+        for blocked in server_data["anti_link"]["blocked"]:
+            if blocked in message.content.lower():
+                try: await message.delete(); await message.channel.send(f"🚫 {message.author.mention}, no links!", delete_after=5); return
+                except: pass
+    await bot.process_commands(message)
+
+bot.run(TOKEN)
 
 @bot.event
 async def on_message(message):
