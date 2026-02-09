@@ -1,4 +1,4 @@
-import os
+Import os
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -15,7 +15,6 @@ server_data = {
     "bad_words": [],
     "auto_role_id": None,
     "afk_users": {},  # AFK মেম্বারদের তথ্য রাখার জন্য
-user_message_count = {} 
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
@@ -112,28 +111,9 @@ class LeaveSetupModal(Modal, title="Customize Leave"):
         await interaction.response.send_message("✅ Leave Updated!", ephemeral=True)
 
 # ================= AFK & SECURITY LOGIC (on_message) =================
+
 @bot.event
 async def on_message(message):
-    if message.author.bot or not message.guild: return
-
-    # --- ANTI-SPAM LOGIC ---
-    user_id = message.author.id
-    current_time = datetime.datetime.now()
-
-    if user_id not in user_message_count:
-        user_message_count[user_id] = []
-
-    # গত ৫ সেকেন্ডের মেসেজগুলো ট্র্যাক করা
-    user_message_count[user_id].append(current_time)
-    user_message_count[user_id] = [t for t in user_message_count[user_id] if (current_time - t).total_seconds() < 5]
-
-    if len(user_message_count[user_id]) > 5: # ৫ সেকেন্ডে ৫টির বেশি মেসেজ দিলে
-        try:
-            await message.delete()
-            await message.channel.send(f"⚠️ {message.author.mention}, স্প্যামিং করবেন না!", delete_after=3)
-            return
-        except: pass
-    # --- END ANTI-SPAM ---
     if message.author.bot or not message.guild: return
 
     # 1. AFK Removal
@@ -180,39 +160,7 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # ================= ALL COMMANDS (আগের সব + নতুন AFK) =================
-# ================= NEW MODERATION COMMANDS =================
 
-# Kick Command
-@bot.tree.command(name="kick", description="Kick a member from the server")
-@app_commands.checks.has_permissions(kick_members=True)
-async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
-    if interaction.guild.me.top_role <= member.top_role:
-        return await interaction.response.send_message("❌ আমার রোল এই মেম্বারের নিচে, তাই কিক করা সম্ভব নয়।", ephemeral=True)
-    
-    await member.kick(reason=reason)
-    await interaction.response.send_message(f"👞 **{member.name}** কে সার্ভার থেকে কিক করা হয়েছে।")
-
-# Timeout (Mute) Command
-@bot.tree.command(name="timeout", description="Timeout a member for a specific duration")
-@app_commands.checks.has_permissions(moderate_members=True)
-async def timeout(interaction: discord.Interaction, member: discord.Member, minutes: int, reason: str = "No reason provided"):
-    if interaction.guild.me.top_role <= member.top_role:
-        return await interaction.response.send_message("❌ আমি এই মেম্বারকে টাইমআউট দিতে পারবো না।", ephemeral=True)
-    
-    duration = datetime.timedelta(minutes=minutes)
-    await member.timeout(duration, reason=reason)
-    await interaction.response.send_message(f"🔇 **{member.name}** কে {minutes} মিনিটের জন্য টাইমআউট দেওয়া হয়েছে।")
-
-# Nuke Command (Channel Reset)
-@bot.tree.command(name="nuke", description="Clear all messages in the channel by recreating it")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def nuke(interaction: discord.Interaction):
-    channel = interaction.channel
-    new_channel = await channel.clone(reason="Nuked")
-    await new_channel.edit(position=channel.position)
-    await channel.delete()
-    await new_channel.send("💥 This channel has been nuked!", delete_after=10)
-    
 @bot.tree.command(name="afk", description="Set your status as Away From Keyboard")
 async def afk(interaction: discord.Interaction, reason: Optional[str] = "I am currently away!"):
     server_data["afk_users"][interaction.user.id] = reason
