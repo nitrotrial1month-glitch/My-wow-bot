@@ -15,6 +15,10 @@ server_data = {
     "bad_words": [],
     "auto_role_id": None,
     "afk_users": {},  # AFK মেম্বারদের তথ্য রাখার জন্য
+    "ticket_count": 0, # টিকিট নম্বর ট্র্যাক করার জন্য
+    # আপনার বাকি আগের ডেটাগুলো এখানে থাকবে...
+}
+
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
@@ -160,6 +164,71 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # ================= ALL COMMANDS (আগের সব + নতুন AFK) =================
+# --- টিকিট ক্লোজ করার বাটন ভিউ ---
+class TicketControlView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.danger, emoji="🔒")
+    async def close_ticket(self, interaction: discord.Interaction):
+        await interaction.response.send_message("This ticket will be closed in 5 seconds...")
+        await asyncio.sleep(5)
+        await interaction.channel.delete()
+
+# --- টিকিট ওপেন করার বাটন ভিউ ---
+class TicketLauncher(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Create Ticket", style=discord.ButtonStyle.primary, emoji="📩", custom_id="launcher")
+    async def create_ticket(self, interaction: discord.Interaction):
+        # টিকিট নম্বর বাড়ানো
+        server_data["ticket_count"] += 1
+        ticket_number = server_data["ticket_count"]
+        
+        guild = interaction.guild
+        category = discord.utils.get(guild.categories, name="TICKETS")
+        
+        # ক্যাটাগরি না থাকলে তৈরি করবে
+        if category is None:
+            category = await guild.create_category("TICKETS")
+
+        # পারমিশন সেটআপ: শুধু ইউজার এবং অ্যাডমিন দেখতে পাবে
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+
+        # চ্যানেল তৈরি (ticket-1, ticket-2 স্টাইলে)
+        channel = await guild.create_text_channel(
+            name=f"ticket-{ticket_number}",
+            category=category,
+            overwrites=overwrites
+        )
+
+        await interaction.response.send_message(f"✅ Ticket created at {channel.mention}", ephemeral=True)
+
+        # টিকিটের ভেতরে ওয়েলকাম মেসেজ
+        embed = discord.Embed(
+            title="Ticket Support",
+            description=f"Hello {interaction.user.mention}, welcome to your support ticket. Please explain your issue and wait for the staff.",
+            color=discord.Color.blue()
+        )
+        await channel.send(embed=embed, view=TicketControlView())
+
+# --- টিকিট সেটআপ কমান্ড ---
+@bot.tree.command(name="setup_ticket", description="Setup the ticket system in a channel")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_ticket(interaction: discord.Interaction, channel: discord.TextChannel):
+    embed = discord.Embed(
+        title="Support Ticket",
+        description="Click the button below to open a new support ticket.",
+        color=discord.Color.green()
+    )
+    await channel.send(embed=embed, view=TicketLauncher())
+    await interaction.response.send_message("✅ Ticket system setup complete!", ephemeral=True)
+    
 
 @bot.tree.command(name="afk", description="Set your status as Away From Keyboard")
 async def afk(interaction: discord.Interaction, reason: Optional[str] = "I am currently away!"):
