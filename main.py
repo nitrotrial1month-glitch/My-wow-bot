@@ -13,6 +13,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 server_data = {
     "anti_link": {"enabled": False, "blocked_list": []},
     "bad_words": [],
+    "auto_role_id": None, # Stores the ID of the role to be given automatically
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
@@ -38,18 +39,28 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
         await self.tree.sync()
-        print(f"✅ Slash Commands Synced")
+        print(f"✅ All Slash Commands Synced")
 
 bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} is Online and Secured!')
+    print(f'🚀 {bot.user.name} Security & Automation is Online!')
 
-# ================= WELCOME & LEAVE EVENTS =================
+# ================= WELCOME, LEAVE & AUTO-ROLE EVENTS =================
 
 @bot.event
 async def on_member_join(member):
+    # 1. Auto-Role Logic
+    if server_data["auto_role_id"]:
+        role = member.guild.get_role(server_data["auto_role_id"])
+        if role:
+            try:
+                await member.add_roles(role)
+            except Exception as e:
+                print(f"Failed to add auto-role: {e}")
+
+    # 2. Welcome Logic
     config = server_data["welcome"]
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
@@ -69,10 +80,9 @@ async def on_member_remove(member):
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
-            join_date = member.joined_at.strftime("%d-%m-%Y") if member.joined_at else "Unknown"
             leave_date = datetime.datetime.now().strftime("%d-%m-%Y")
             desc = config["description"].replace("{member}", f"**{member.name}**")
-            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📥 **Joined:** {join_date}\n📤 **Left:** {leave_date}"
+            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📤 **Left On:** {leave_date}"
             embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
             if config["image_url"]: embed.set_image(url=config["image_url"])
             embed.set_thumbnail(url=member.display_avatar.url)
@@ -88,15 +98,14 @@ class WelcomeSetupModal(Modal, title="Customize Welcome"):
         server_data["welcome"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
         await interaction.response.send_message("✅ Welcome Updated!", ephemeral=True)
 
-class LeaveSetupModal(Modal, title="Customize Leave"):
-    title_in = TextInput(label="Title", default="Goodbye!")
-    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="{member} left.")
-    gif_in = TextInput(label="GIF URL", required=False)
-    async def on_submit(self, interaction: discord.Interaction):
-        server_data["leave"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
-        await interaction.response.send_message("✅ Leave Updated!", ephemeral=True)
+# ================= COMMANDS =================
 
-# ================= MODERATION COMMANDS =================
+@bot.tree.command(name="setup_autorole", description="Set a role to be given automatically when a member joins")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_autorole(interaction: discord.Interaction, role: discord.Role):
+    server_data["auto_role_id"] = role.id
+    embed = discord.Embed(description=f"✅ **Auto-Role** set to: {role.mention}", color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="addword", description="Add a prohibited word to the blocklist")
 @app_commands.checks.has_permissions(administrator=True)
@@ -106,7 +115,7 @@ async def addword(interaction: discord.Interaction, word: str):
         server_data["bad_words"].append(word)
         await interaction.response.send_message(f"✅ `{word}` added to blocklist.", ephemeral=True)
     else:
-        await interaction.response.send_message("❌ This word is already blocked.", ephemeral=True)
+        await interaction.response.send_message("❌ Already in the list.", ephemeral=True)
 
 @bot.tree.command(name="lock", description="Lock the current channel")
 @app_commands.checks.has_permissions(manage_channels=True)
@@ -133,36 +142,26 @@ async def setup_welcome(interaction: discord.Interaction, channel: discord.TextC
 @bot.tree.command(name="setup_leave", description="Setup the leave system")
 async def setup_leave(interaction: discord.Interaction, channel: discord.TextChannel):
     server_data["leave"]["channel_id"] = channel.id
-    view = View(); btn = Button(label="Customize Leave", style=discord.ButtonStyle.danger)
-    async def cb(i): await i.response.send_modal(LeaveSetupModal())
-    btn.callback = cb; view.add_item(btn)
-    await interaction.response.send_message(f"📍 Leave Channel: {channel.mention}", view=view, ephemeral=True)
+    await interaction.response.send_message(f"📍 Leave Channel set to: {channel.mention}", ephemeral=True)
 
 @bot.tree.command(name="antilink", description="Toggle Anti-Link Security")
 async def antilink(interaction: discord.Interaction):
     server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
     status = "Enabled" if server_data["anti_link"]["enabled"] else "Disabled"
-    embed = discord.Embed(description=f"🛡️ Anti-Link Security: **{status}**", color=discord.Color.blue())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-@bot.tree.command(name="blocklink", description="Block a specific link pattern")
-async def blocklink(interaction: discord.Interaction, link: str):
-    server_data["anti_link"]["blocked_list"].append(link.lower())
-    await interaction.response.send_message(f"✅ `{link}` added to blocked links.", ephemeral=True)
+    await interaction.response.send_message(f"🛡️ Anti-Link Security: **{status}**", ephemeral=True)
 
 @bot.tree.command(name="clear", description="Clear messages")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.defer(ephemeral=True)
     deleted = await interaction.channel.purge(limit=amount)
-    await interaction.followup.send(f"🧹 Successfully deleted **{len(deleted)}** messages.")
+    await interaction.followup.send(f"🧹 Deleted **{len(deleted)}** messages.")
 
 # ================= SECURITY LOGIC =================
 
 @bot.event
 async def on_message(message):
     if message.author.bot: return
-
     msg_content = message.content.lower()
 
     # 1. Profanity Filter
@@ -170,38 +169,21 @@ async def on_message(message):
         if word in msg_content:
             try:
                 await message.delete()
-                embed = discord.Embed(
-                    title="🚫 Profanity Warning",
-                    description=f"{message.author.mention}, your message contained prohibited language.",
-                    color=discord.Color.red()
-                )
+                embed = discord.Embed(title="🚫 Prohibited Language", description=f"{message.author.mention}, watch your language.", color=discord.Color.red())
                 await message.channel.send(embed=embed, delete_after=5)
                 return 
             except: pass
 
     # 2. Anti-Link Filter
     if server_data["anti_link"]["enabled"]:
-        is_link = "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content
-        if is_link:
+        if "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content:
             try:
                 await message.delete()
-                embed = discord.Embed(
-                    title="🚫 Link Restriction",
-                    description=f"{message.author.mention}, posting links is currently restricted.",
-                    color=discord.Color.orange()
-                )
+                embed = discord.Embed(title="🚫 Link Blocked", description=f"{message.author.mention}, links are not allowed.", color=discord.Color.orange())
                 await message.channel.send(embed=embed, delete_after=5)
                 return
             except: pass
-            
-        for blocked in server_data["anti_link"]["blocked_list"]:
-            if blocked in msg_content:
-                try:
-                    await message.delete()
-                    return
-                except: pass
 
     await bot.process_commands(message)
 
 bot.run(TOKEN)
-            
