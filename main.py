@@ -5,6 +5,7 @@ from discord.ext import commands
 from discord.ui import View, Button, Modal, TextInput
 from typing import Optional
 import datetime
+import random # উইনার সিলেক্ট করার জন্য এটি উপরে ইম্পোর্ট করে নিন
 
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -15,6 +16,7 @@ server_data = {
     "bad_words": [],
     "auto_role_id": None,
     "afk_users": {},  # AFK মেম্বারদের তথ্য রাখার জন্য
+    "giveaways": {}, # চলমান গিভওয়েগুলোর তথ্য রাখার জন্য
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
@@ -44,7 +46,8 @@ class MyBot(commands.Bot):
             print(f"✅ All Slash Commands Synced")
         except Exception as e:
             print(f"❌ Sync Error: {e}")
-
+# Persistent views usually need a fixed custom_id
+# self.add_view(GiveawayView(None)) 
 bot = MyBot()
 
 @bot.event
@@ -243,4 +246,59 @@ async def clear(interaction: discord.Interaction, amount: int):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.followup.send(f"🧹 Deleted {len(deleted)} messages.")
 
+# --- Giveaway Join Button View ---
+class GiveawayView(discord.ui.View):
+    def __init__(self, message_id):
+        super().__init__(timeout=None)
+        self.message_id = message_id
+        self.participants = []
+
+    @discord.ui.button(label="Join Giveaway 🎉", style=discord.ButtonStyle.blurple, custom_id="join_giveaway")
+    async def join_button(self, interaction: discord.Interaction):
+        if interaction.user.id in self.participants:
+            return await interaction.response.send_message("❌ You already joined!", ephemeral=True)
+        
+        self.participants.append(interaction.user.id)
+        await interaction.response.send_message("✅ You have successfully joined the giveaway!", ephemeral=True)
+
+# --- Giveaway Start Command ---
+@bot.tree.command(name="giveaway_start", description="Start a professional giveaway")
+@app_commands.checks.has_permissions(administrator=True)
+async def giveaway_start(interaction: discord.Interaction, duration_mins: int, winners: int, prize: str, channel: Optional[discord.TextChannel] = None):
+    channel = channel or interaction.channel
+    end_time = datetime.datetime.now() + datetime.timedelta(minutes=duration_mins)
+    timestamp = int(end_time.timestamp())
+
+    embed = discord.Embed(
+        title="🎉 NEW GIVEAWAY 🎉",
+        description=f"**Prize:** {prize}\n**Winners:** {winners}\n**Ends:** <t:{timestamp}:R>\n**Hosted by:** {interaction.user.mention}",
+        color=discord.Color.random()
+    )
+    embed.set_footer(text="Click the button below to enter!")
+    
+    await interaction.response.send_message(f"✅ Giveaway started in {channel.mention}", ephemeral=True)
+    
+    # Sending the giveaway message with Button
+    giveaway_msg = await channel.send(embed=embed)
+    view = GiveawayView(giveaway_msg.id)
+    await giveaway_msg.edit(view=view)
+
+    # Waiting for the duration
+    await asyncio.sleep(duration_mins * 60)
+
+    # Picking Winners
+    if not view.participants:
+        await channel.send(f"☹️ No one joined the giveaway for **{prize}**.")
+    else:
+        winner_list = random.sample(view.participants, min(len(view.participants), winners))
+        winner_mentions = ", ".join([f"<@{w_id}>" for w_id in winner_list])
+        
+        end_embed = discord.Embed(
+            title="🎊 GIVEAWAY ENDED 🎊",
+            description=f"**Prize:** {prize}\n**Winners:** {winner_mentions}\n**Participants:** {len(view.participants)}",
+            color=discord.Color.gold()
+        )
+        await giveaway_msg.edit(embed=end_embed, view=None)
+        await channel.send(f"Congratulations {winner_mentions}! You won **{prize}**! 🏆")
+    
 bot.run(TOKEN)
