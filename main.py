@@ -7,10 +7,10 @@ from typing import Optional
 import datetime
 import asyncio
 
-# Railway Token
+# Railway Environment Variable
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# Centralized Data Storage
+# Centralized Data Structure
 server_data = {
     "anti_link": {"enabled": False},
     "bad_words": [],
@@ -24,22 +24,22 @@ server_data = {
     },
     "ticket_inside": {
         "title": "Support Ticket",
-        "description": "Hello {member}, our support team will be with you shortly.",
-        "color": discord.Color.blue().value
+        "description": "Hello {member}, our support team will be with you shortly. Please describe your issue.",
+        "color": 0x3498db
     },
     "welcome": {
         "channel_id": None,
-        "title": "Welcome to our Server!",
-        "description": "Welcome {member}!",
+        "title": "Welcome!",
+        "description": "Welcome {member} to the server!",
         "image_url": None,
-        "color": 0x00ff00
+        "color": 0x2ecc71
     },
     "leave": {
         "channel_id": None,
-        "title": "Goodbye from the Server!",
-        "description": "{member} has left us. We will miss you!",
+        "title": "Goodbye!",
+        "description": "{member} has left the server.",
         "image_url": None,
-        "color": 0xff0000
+        "color": 0xe74c3c
     }
 }
 
@@ -51,36 +51,34 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # Registering views to make them persistent after restart
+        # Persistent Views Registration
         self.add_view(TicketLauncher())
         self.add_view(TicketControl())
         await self.tree.sync()
-        print(f"✅ All Systems, Slash Commands & Ticket Views Synced")
+        print(f"✅ Syncing successful!")
 
 bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} is Online and Ready!')
+    print(f'🚀 {bot.user.name} is now Online!')
 
-# ================= EVENTS (WELCOME, LEAVE, AUTO-ROLE) =================
+# ================= EVENTS (Welcome, Leave, Security, AFK) =================
 
 @bot.event
 async def on_member_join(member):
+    # Auto-Role
     if server_data["auto_role_id"]:
         role = member.guild.get_role(server_data["auto_role_id"])
-        if role:
-            try: await member.add_roles(role)
-            except: pass
+        if role: await member.add_roles(role)
 
+    # Welcome Message
     config = server_data["welcome"]
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
-            desc = config["description"].replace("{member}", member.mention)
-            embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
+            embed = discord.Embed(title=config["title"], description=config["description"].replace("{member}", member.mention), color=config["color"])
             if config["image_url"]: embed.set_image(url=config["image_url"])
-            embed.set_thumbnail(url=member.display_avatar.url)
             await channel.send(embed=embed)
 
 @bot.event
@@ -92,39 +90,35 @@ async def on_member_remove(member):
             embed = discord.Embed(title=config["title"], description=config["description"].replace("{member}", member.name), color=config["color"])
             await channel.send(embed=embed)
 
-# ================= AFK & SECURITY LOGIC =================
-
 @bot.event
 async def on_message(message):
     if message.author.bot or not message.guild: return
 
-    # AFK System
+    # AFK Logic
     if message.author.id in server_data["afk_users"]:
         del server_data["afk_users"][message.author.id]
-        await message.channel.send(f"Welcome back {message.author.mention}, AFK removed!", delete_after=5)
+        await message.channel.send(f"Welcome back {message.author.mention}, your AFK status is removed.", delete_after=5)
 
     if message.mentions:
-        for mentioned in message.mentions:
-            if mentioned.id in server_data["afk_users"]:
-                reason = server_data["afk_users"][mentioned.id]
-                await message.reply(f"📌 {mentioned.name} is AFK: {reason}", delete_after=10)
+        for user in message.mentions:
+            if user.id in server_data["afk_users"]:
+                await message.reply(f"📌 {user.name} is currently AFK: {server_data['afk_users'][user.id]}", delete_after=10)
 
-    msg_content = message.content.lower()
+    # Security: Anti-Link & Bad Words
+    content = message.content.lower()
+    if server_data["anti_link"]["enabled"] and any(x in content for x in ["http://", "https://", "discord.gg/"]):
+        if not message.author.guild_permissions.manage_messages:
+            await message.delete()
+            return await message.channel.send(f"🚫 {message.author.mention}, links are not allowed!", delete_after=5)
 
-    # Security Filters
     for word in server_data["bad_words"]:
-        if word in msg_content:
-            try: await message.delete(); return
-            except: pass
-
-    if server_data["anti_link"]["enabled"]:
-        if any(x in msg_content for x in ["http", "discord.gg", ".com"]):
-            try: await message.delete(); return
-            except: pass
+        if word in content:
+            await message.delete()
+            return await message.channel.send(f"🚫 {message.author.mention}, watch your language!", delete_after=5)
 
     await bot.process_commands(message)
 
-# ================= TICKET SYSTEM COMPONENTS =================
+# ================= TICKET UI COMPONENTS =================
 
 class TicketControl(View):
     def __init__(self):
@@ -132,25 +126,25 @@ class TicketControl(View):
 
     @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="persistent_close")
     async def close(self, interaction: discord.Interaction):
-        await interaction.response.send_message("⚠️ Closing in 5 seconds...", ephemeral=False)
+        await interaction.response.send_message("⚠️ This channel will be deleted in 5 seconds...", ephemeral=False)
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
     @discord.ui.button(label="Claim Ticket", style=discord.ButtonStyle.success, emoji="🙋‍♂️", custom_id="persistent_claim")
     async def claim(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.manage_channels:
-            return await interaction.response.send_message("❌ Staff only!", ephemeral=True)
-        await interaction.response.send_message(f"✅ Claimed by {interaction.user.mention}", ephemeral=False)
+            return await interaction.response.send_message("❌ Only staff can claim tickets.", ephemeral=True)
+        await interaction.response.send_message(f"✅ Ticket claimed by {interaction.user.mention}", ephemeral=False)
         self.claim.disabled = True
         await interaction.message.edit(view=self)
 
 class TicketDropdown(Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="General Support", emoji="🛠️"),
-            discord.SelectOption(label="Report Member", emoji="🚫")
+            discord.SelectOption(label="General Support", description="For general queries", emoji="🛠️"),
+            discord.SelectOption(label="Report Member", description="Report rule violations", emoji="🚫")
         ]
-        super().__init__(placeholder="Select Category", min_values=1, max_values=1, options=options, custom_id="persistent_drop")
+        super().__init__(placeholder="Select a category...", min_values=1, max_values=1, options=options, custom_id="persistent_drop")
 
     async def callback(self, interaction: discord.Interaction):
         server_data["ticket_count"] += 1
@@ -168,7 +162,7 @@ class TicketDropdown(Select):
         await interaction.response.send_message(f"✅ Ticket created: {channel.mention}", ephemeral=True)
 
         config = server_data["ticket_inside"]
-        embed = discord.Embed(title=config["title"], description=config["description"].replace("{member}", interaction.user.mention), color=config["color"])
+        embed = discord.Embed(title=config["title"], description=config["description"].replace("{member}", interaction.user.mention), color=discord.Color.blue())
         await channel.send(embed=embed, view=TicketControl())
 
 class TicketLauncher(View):
@@ -176,98 +170,56 @@ class TicketLauncher(View):
         super().__init__(timeout=None)
         self.add_item(TicketDropdown())
 
-# ================= DASHBOARD MODALS =================
+# ================= SLASH COMMANDS (ALL CATEGORIES) =================
 
-class DashboardEditModal(Modal, title="Edit Ticket Dashboard"):
-    title_in = TextInput(label="Title", default=server_data["ticket_dashboard"]["title"])
-    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default=server_data["ticket_dashboard"]["description"])
-    img_in = TextInput(label="Image URL", default=server_data["ticket_dashboard"]["image"], required=False)
-    async def on_submit(self, interaction: discord.Interaction):
-        server_data["ticket_dashboard"].update({"title": self.title_in.value, "description": self.desc_in.value, "image": self.img_in.value})
-        await interaction.response.send_message("✅ Dashboard settings updated!", ephemeral=True)
-
-class InsideEditModal(Modal, title="Edit Ticket Inside Message"):
-    title_in = TextInput(label="Title", default=server_data["ticket_inside"]["title"])
-    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default=server_data["ticket_inside"]["description"])
-    async def on_submit(self, interaction: discord.Interaction):
-        server_data["ticket_inside"].update({"title": self.title_in.value, "description": self.desc_in.value})
-        await interaction.response.send_message("✅ Inside message updated!", ephemeral=True)
-
-# ================= ALL SLASH COMMANDS =================
-
-@bot.tree.command(name="lock", description="Lock current channel")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def lock(interaction: discord.Interaction):
-    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
-    await interaction.response.send_message("🔒 Channel Locked.")
-
-@bot.tree.command(name="unlock", description="Unlock current channel")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def unlock(interaction: discord.Interaction):
-    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
-    await interaction.response.send_message("🔓 Channel Unlocked.")
-
+# --- Moderation ---
 @bot.tree.command(name="clear", description="Clear messages")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear(interaction: discord.Interaction, amount: int):
-    await interaction.response.defer(ephemeral=True)
     await interaction.channel.purge(limit=amount)
-    await interaction.followup.send(f"🧹 Deleted {amount} messages.")
+    await interaction.response.send_message(f"🧹 Cleared {amount} messages.", ephemeral=True)
 
 @bot.tree.command(name="ban", description="Ban a member")
 @app_commands.checks.has_permissions(ban_members=True)
 async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
     await member.ban(reason=reason)
-    await interaction.response.send_message(f"🔨 Banned {member.name}")
-
-@bot.tree.command(name="unban", description="Unban a user by ID")
-@app_commands.checks.has_permissions(ban_members=True)
-async def unban(interaction: discord.Interaction, user_id: str):
-    user = await bot.fetch_user(int(user_id))
-    await interaction.guild.unban(user)
-    await interaction.response.send_message(f"✅ Unbanned {user.name}")
+    await interaction.response.send_message(f"🔨 Banned {member.name}.")
 
 @bot.tree.command(name="timeout", description="Timeout a member")
 @app_commands.checks.has_permissions(moderate_members=True)
-async def timeout(interaction: discord.Interaction, member: discord.Member, minutes: int, reason: str = "No reason"):
-    await member.timeout(datetime.timedelta(minutes=minutes), reason=reason)
-    await interaction.response.send_message(f"⏳ Timed out {member.name} for {minutes}m.")
+async def timeout(interaction: discord.Interaction, member: discord.Member, minutes: int):
+    duration = datetime.timedelta(minutes=minutes)
+    await member.timeout(duration)
+    await interaction.response.send_message(f"⏳ {member.name} timed out for {minutes}m.")
 
-@bot.tree.command(name="ticket_setup", description="Deploy the ticket panel")
-async def ticket_setup(interaction: discord.Interaction, channel: discord.TextChannel):
-    config = server_data["ticket_dashboard"]
-    embed = discord.Embed(title=config["title"], description=config["description"], color=discord.Color.green())
-    if config["image"]: embed.set_image(url=config["image"])
-    await channel.send(embed=embed, view=TicketLauncher())
-    await interaction.response.send_message(f"✅ Ticket system setup in {channel.mention}", ephemeral=True)
-
-@bot.tree.command(name="ticket_dashboard", description="Control ticket settings")
-async def ticket_dashboard(interaction: discord.Interaction):
-    view = View()
-    btn1 = Button(label="Edit Panel", style=discord.ButtonStyle.primary)
-    btn2 = Button(label="Edit Message", style=discord.ButtonStyle.secondary)
-    async def cb1(i): await i.response.send_modal(DashboardEditModal())
-    async def cb2(i): await i.response.send_modal(InsideEditModal())
-    btn1.callback = cb1; btn2.callback = cb2
-    view.add_item(btn1); view.add_item(btn2)
-    await interaction.response.send_message("⚙️ Ticket Control Dashboard", view=view, ephemeral=True)
-
-@bot.tree.command(name="afk", description="Set AFK status")
-async def afk(interaction: discord.Interaction, reason: str = "Away"):
-    server_data["afk_users"][interaction.user.id] = reason
-    await interaction.response.send_message(f"✅ AFK set: {reason}")
-
-@bot.tree.command(name="antilink", description="Toggle Anti-Link")
+# --- Security ---
+@bot.tree.command(name="antilink", description="Toggle Anti-Link protection")
 async def antilink(interaction: discord.Interaction):
     server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
-    await interaction.response.send_message(f"🛡️ Anti-Link: {'ON' if server_data['anti_link']['enabled'] else 'OFF'}")
+    state = "Enabled" if server_data["anti_link"]["enabled"] else "Disabled"
+    await interaction.response.send_message(f"🛡️ Anti-Link is now **{state}**.")
 
-@bot.tree.command(name="addword", description="Add word to blacklist")
+@bot.tree.command(name="addword", description="Blacklist a word")
 async def addword(interaction: discord.Interaction, word: str):
     server_data["bad_words"].append(word.lower())
     await interaction.response.send_message(f"✅ Word `{word}` added to blacklist.")
 
-@bot.tree.command(name="setup_welcome", description="Set Welcome Channel")
+# --- Ticket System ---
+@bot.tree.command(name="ticket_setup", description="Deploy Ticket Panel")
+async def ticket_setup(interaction: discord.Interaction, channel: discord.TextChannel):
+    config = server_data["ticket_dashboard"]
+    embed = discord.Embed(title=config["title"], description=config["description"], color=0x2ecc71)
+    if config["image"]: embed.set_image(url=config["image"])
+    await channel.send(embed=embed, view=TicketLauncher())
+    await interaction.response.send_message("✅ Ticket Panel deployed.", ephemeral=True)
+
+# --- Utility & AFK ---
+@bot.tree.command(name="afk", description="Set AFK status")
+async def afk(interaction: discord.Interaction, reason: str = "Away from keyboard"):
+    server_data["afk_users"][interaction.user.id] = reason
+    await interaction.response.send_message(f"✅ You are now AFK: {reason}")
+
+@bot.tree.command(name="setup_welcome", description="Configure Welcome Channel")
 async def setup_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
     server_data["welcome"]["channel_id"] = channel.id
     await interaction.response.send_message(f"✅ Welcome channel set to {channel.mention}")
