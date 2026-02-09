@@ -38,30 +38,33 @@ class MyBot(commands.Bot):
         intents.members = True 
         super().__init__(command_prefix="!", intents=intents)
 
-    async def setup_hook(self):
-        # --- এই অংশটুকু যোগ করুন ---
-        # টিকিট বাটনগুলো রিস্টার্টের পর সচল রাখার জন্য রেজিস্ট্রেশন
+        async def setup_hook(self):
+        # Persistent Views রেজিস্টার করা (এটি বাটন এরর সমাধান করবে)
         try:
             from cogs.ticket import TicketLaunch, TicketControl
             self.add_view(TicketLaunch())
             self.add_view(TicketControl())
             print("✅ Ticket Views Registered")
         except Exception as e:
-            print(f"⚠️ View registration skipped (file might not exist yet): {e}")
+            print(f"⚠️ View error: {e}")
 
-        # cogs ফোল্ডারের ভেতর থাকা ফাইল লোড করা
+        # Cogs লোড করা
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
-                    await self.load_extension(f'cogs.{filename[:-3]}')
-                    print(f"✅ Loaded: {filename}")
+                    try:
+                        await self.load_extension(f'cogs.{filename[:-3]}')
+                        print(f"✅ Loaded extension: {filename}")
+                    except Exception as e:
+                        print(f"❌ Failed to load {filename}: {e}")
         
         # কমান্ড সিঙ্ক করা
         try:
             await self.tree.sync()
-            print(f"✅ All Slash Commands Synced")
+            print("✅ Slash Commands Synced")
         except Exception as e:
             print(f"❌ Sync Error: {e}")
+
 
 
 bot = MyBot()
