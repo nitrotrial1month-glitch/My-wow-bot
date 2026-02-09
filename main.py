@@ -157,6 +157,44 @@ async def clear(interaction: discord.Interaction, amount: int):
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.followup.send(f"🧹 Deleted **{len(deleted)}** messages.")
 
+@bot.tree.command(name="ban", description="Ban a member from the server")
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: Optional[str] = "No reason provided"):
+    try:
+        # মেম্বারকে ব্যান করা হচ্ছে
+        await member.ban(reason=reason)
+        
+        # একটি সুন্দর এমবেড তৈরি করা
+        embed = discord.Embed(
+            title="🔨 Member Banned",
+            description=f"**User:** {member.name}\n**Reason:** {reason}\n**Moderator:** {interaction.user.mention}",
+            color=discord.Color.red()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"User ID: {member.id}")
+        
+        await interaction.response.send_message(embed=embed)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Failed to ban: {e}", ephemeral=True)
+   
+@bot.tree.command(name="unban", description="Unban a member using their User ID")
+@app_commands.checks.has_permissions(ban_members=True)
+async def unban(interaction: discord.Interaction, user_id: str):
+    try:
+        # ID থেকে ইউজারকে খুঁজে বের করা
+        user = await bot.fetch_user(int(user_id))
+        
+        # সার্ভার থেকে আনব্যান করা
+        await interaction.guild.unban(user)
+        
+        embed = discord.Embed(
+            description=f"✅ Successfully unbanned **{user.name}**.",
+            color=discord.Color.green()
+        )
+        await interaction.response.send_message(embed=embed)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Could not unban. Check if ID is correct. Error: {e}", ephemeral=True)
+    
 # ================= SECURITY LOGIC =================
 
 @bot.event
