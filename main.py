@@ -159,42 +159,62 @@ async def clear(interaction: discord.Interaction, amount: int):
 
 @bot.tree.command(name="ban", description="Ban a member from the server")
 @app_commands.checks.has_permissions(ban_members=True)
-async def ban(interaction: discord.Interaction, member: discord.Member, reason: Optional[str] = "No reason provided"):
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
+    # Check if the bot's role is high enough
+    if interaction.guild.me.top_role <= member.top_role:
+        return await interaction.response.send_message(
+            "❌ Cannot ban this member! My role must be higher than theirs in the hierarchy.", 
+            ephemeral=True
+        )
+    
     try:
-        # মেম্বারকে ব্যান করা হচ্ছে
         await member.ban(reason=reason)
-        
-        # একটি সুন্দর এমবেড তৈরি করা
         embed = discord.Embed(
             title="🔨 Member Banned",
             description=f"**User:** {member.name}\n**Reason:** {reason}\n**Moderator:** {interaction.user.mention}",
             color=discord.Color.red()
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text=f"User ID: {member.id}")
-        
         await interaction.response.send_message(embed=embed)
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ I lack the required permissions to perform this action.", ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Failed to ban: {e}", ephemeral=True)
-   
+        await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
+
 @bot.tree.command(name="unban", description="Unban a member using their User ID")
 @app_commands.checks.has_permissions(ban_members=True)
 async def unban(interaction: discord.Interaction, user_id: str):
     try:
-        # ID থেকে ইউজারকে খুঁজে বের করা
+        # Fetching the user object using the ID provided
         user = await bot.fetch_user(int(user_id))
         
-        # সার্ভার থেকে আনব্যান করা
+        # Attempting to unban the user from the guild
         await interaction.guild.unban(user)
         
+        # Creating a unique success embed
         embed = discord.Embed(
-            description=f"✅ Successfully unbanned **{user.name}**.",
-            color=discord.Color.green()
+            title="🔓 Member Unbanned",
+            description=f"Successfully restored access for **{user.name}**.",
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.now()
         )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.add_field(name="User ID", value=user_id, inline=True)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+        embed.set_footer(text="Security System Updated")
+
         await interaction.response.send_message(embed=embed)
+        
+    except ValueError:
+        await interaction.response.send_message("❌ Invalid User ID. Please provide a numeric ID.", ephemeral=True)
+    except discord.NotFound:
+        await interaction.response.send_message("❌ This user is not found in the ban list.", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ I do not have permission to unban members.", ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Could not unban. Check if ID is correct. Error: {e}", ephemeral=True)
-    
+        await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
+        
+
 # ================= SECURITY LOGIC =================
 
 @bot.event
