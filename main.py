@@ -38,27 +38,27 @@ class MyBot(commands.Bot):
         intents.members = True 
         super().__init__(command_prefix="!", intents=intents)
 
-        async def setup_hook(self):
-        # ১. টিকিট বাটনগুলো রেজিস্টার করা (এটি ছাড়া বাটন Interaction Failed দেখাবে)
+    async def setup_hook(self):
+        # বাটন লজিক রেজিস্টার করা (Interaction Failed সমাধান)
         try:
             from cogs.ticket import TicketLaunch, TicketControl
             self.add_view(TicketLaunch())
             self.add_view(TicketControl())
             print("✅ Ticket Views Registered")
         except Exception as e:
-            print(f"⚠️ View Registration Error: {e}")
+            print(f"⚠️ View Error: {e}")
 
-        # ২. Cogs ফোল্ডার থেকে ফাইল লোড করা (টিকিট সিস্টেম লোড করার জন্য)
+        # Cogs লোড করা (আপনার আগের কোডটি সঠিক স্পেস দিয়ে)
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
-                        print(f"✅ Loaded: {filename}")
+                        print(f"✅ Loaded extension: {filename}")
                     except Exception as e:
-                        print(f"❌ Error loading {filename}: {e}")
+                        print(f"❌ Failed to load {filename}: {e}")
         
-        # ৩. সব স্ল্যাশ কমান্ড সিঙ্ক করা
+        # কমান্ড সিঙ্ক করা
         try:
             await self.tree.sync()
             print("✅ Slash Commands Synced")
