@@ -14,7 +14,7 @@ server_data = {
     "anti_link": {"enabled": False, "blocked_list": []},
     "bad_words": [],
     "auto_role_id": None,
-    "afk_users": {},  # Stores {user_id: reason}
+    "afk_users": {},  
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
@@ -39,36 +39,45 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        await self.tree.sync()
-        print(f"✅ All Slash Commands Synced")
+        try:
+            await self.tree.sync()
+            print(f"✅ All Slash Commands Synced")
+        except Exception as e:
+            print(f"❌ Failed to sync commands: {e}")
 
 bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} is fully operational with AFK & Security!')
+    print(f'🚀 {bot.user.name} is Online and Ready!')
 
 # ================= EVENTS (WELCOME, LEAVE, AUTO-ROLE) =================
 
 @bot.event
 async def on_member_join(member):
-    # Auto-Role
+    # Auto-Role Logic
     if server_data["auto_role_id"]:
         role = member.guild.get_role(server_data["auto_role_id"])
         if role:
-            try: await member.add_roles(role)
-            except: pass
+            try:
+                await member.add_roles(role)
+            except:
+                pass
 
-    # Welcome Message
+    # Welcome Message Logic
     config = server_data["welcome"]
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
             desc = config["description"].replace("{member}", member.mention)
             embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
-            if config["image_url"]: embed.set_image(url=config["image_url"])
+            if config["image_url"]:
+                embed.set_image(url=config["image_url"])
             embed.set_thumbnail(url=member.display_avatar.url)
-            await channel.send(embed=embed)
+            try:
+                await channel.send(embed=embed)
+            except:
+                pass
 
 @bot.event
 async def on_member_remove(member):
@@ -76,27 +85,37 @@ async def on_member_remove(member):
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
-            embed = discord.Embed(title=config["title"], description=config["description"].replace("{member}", member.name), color=config["color"])
-            await channel.send(embed=embed)
+            desc = config["description"].replace("{member}", member.name)
+            embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
+            try:
+                await channel.send(embed=embed)
+            except:
+                pass
 
-# ================= SECURITY & AFK LOGIC =================
+# ================= AFK & SECURITY LOGIC =================
 
 @bot.event
 async def on_message(message):
-    if message.author.bot: return
+    if message.author.bot or not message.guild:
+        return
 
-    # 1. AFK Status Removal
+    # 1. AFK Removal
     if message.author.id in server_data["afk_users"]:
         del server_data["afk_users"][message.author.id]
-        await message.channel.send(f"Welcome back {message.author.mention}, I've removed your AFK!", delete_after=5)
+        try:
+            await message.channel.send(f"Welcome back {message.author.mention}, your AFK status is removed!", delete_after=5)
+        except:
+            pass
 
     # 2. AFK Mention Notification
-    if message.mentions:
-        for mentioned in message.mentions:
-            if mentioned.id in server_data["afk_users"]:
-                reason = server_data["afk_users"][mentioned.id]
-                embed = discord.Embed(description=f"📌 **{mentioned.name}** is currently AFK: {reason}", color=discord.Color.gold())
+    for mentioned in message.mentions:
+        if mentioned.id in server_data["afk_users"]:
+            reason = server_data["afk_users"][mentioned.id]
+            embed = discord.Embed(description=f"📌 **{mentioned.name}** is currently AFK: {reason}", color=discord.Color.gold())
+            try:
                 await message.reply(embed=embed, delete_after=10)
+            except:
+                pass
 
     msg_content = message.content.lower()
 
@@ -108,9 +127,78 @@ async def on_message(message):
                 embed = discord.Embed(title="🚫 Prohibited Language", description=f"{message.author.mention}, watch your language.", color=discord.Color.red())
                 await message.channel.send(embed=embed, delete_after=5)
                 return 
-            except: pass
+            except:
+                pass
 
     # 4. Anti-Link Filter
+    if server_data["anti_link"]["enabled"]:
+        if any(link in msg_content for link in ["http", "discord.gg", ".com", ".net", ".org"]):
+            try:
+                await message.delete()
+                embed = discord.Embed(title="🚫 Link Blocked", description=f"{message.author.mention}, links are restricted.", color=discord.Color.orange())
+                await message.channel.send(embed=embed, delete_after=5)
+                return
+            except:
+                pass
+
+    await bot.process_commands(message)
+
+# ================= MODERATION & SETUP COMMANDS =================
+
+@bot.tree.command(name="afk", description="Set your AFK status")
+async def afk(interaction: discord.Interaction, reason: Optional[str] = "I am currently away!"):
+    server_data["afk_users"][interaction.user.id] = reason
+    embed = discord.Embed(description=f"✅ {interaction.user.mention}, AFK set: **{reason}**", color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="ban", description="Ban a member")
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
+    if interaction.guild.me.top_role <= member.top_role:
+        return await interaction.response.send_message("❌ My role is not high enough to ban this person!", ephemeral=True)
+    
+    try:
+        await member.ban(reason=reason)
+        await interaction.response.send_message(f"🔨 Successfully banned **{member.name}**")
+    except:
+        await interaction.response.send_message("❌ Failed to ban. Check my permissions.", ephemeral=True)
+
+@bot.tree.command(name="clear", description="Clear messages")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear(interaction: discord.Interaction, amount: int):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        deleted = await interaction.channel.purge(limit=amount)
+        await interaction.followup.send(f"🧹 Cleared **{len(deleted)}** messages.")
+    except:
+        await interaction.followup.send("❌ Something went wrong while clearing.")
+
+@bot.tree.command(name="antilink", description="Toggle Anti-Link Security")
+@app_commands.checks.has_permissions(administrator=True)
+async def antilink(interaction: discord.Interaction):
+    server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
+    status = "Enabled" if server_data["anti_link"]["enabled"] else "Disabled"
+    await interaction.response.send_message(f"🛡️ Anti-Link is now **{status}**")
+
+@bot.tree.command(name="addword", description="Add a bad word to blocklist")
+@app_commands.checks.has_permissions(administrator=True)
+async def addword(interaction: discord.Interaction, word: str):
+    server_data["bad_words"].append(word.lower())
+    await interaction.response.send_message(f"✅ Word `{word}` has been blocked.", ephemeral=True)
+
+@bot.tree.command(name="lock", description="Lock this channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def lock(interaction: discord.Interaction):
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+    await interaction.response.send_message("🔒 Channel has been locked.")
+
+@bot.tree.command(name="unlock", description="Unlock this channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def unlock(interaction: discord.Interaction):
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
+    await interaction.response.send_message("🔓 Channel has been unlocked.")
+
+bot.run(TOKEN)
     if server_data["anti_link"]["enabled"]:
         if "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content:
             try:
