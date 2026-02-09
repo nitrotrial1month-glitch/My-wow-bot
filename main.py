@@ -13,7 +13,8 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 server_data = {
     "anti_link": {"enabled": False, "blocked_list": []},
     "bad_words": [],
-    "auto_role_id": None, # Stores the ID of the role to be given automatically
+    "auto_role_id": None,
+    "afk_users": {},  # Stores {user_id: reason}
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
@@ -45,34 +46,29 @@ bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} Security & Automation is Online!')
+    print(f'🚀 {bot.user.name} is fully operational with AFK & Security!')
 
-# ================= WELCOME, LEAVE & AUTO-ROLE EVENTS =================
+# ================= EVENTS (WELCOME, LEAVE, AUTO-ROLE) =================
 
 @bot.event
 async def on_member_join(member):
-    # 1. Auto-Role Logic
+    # Auto-Role
     if server_data["auto_role_id"]:
         role = member.guild.get_role(server_data["auto_role_id"])
         if role:
-            try:
-                await member.add_roles(role)
-            except Exception as e:
-                print(f"Failed to add auto-role: {e}")
+            try: await member.add_roles(role)
+            except: pass
 
-    # 2. Welcome Logic
+    # Welcome Message
     config = server_data["welcome"]
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
-            join_date = member.joined_at.strftime("%d-%m-%Y")
             desc = config["description"].replace("{member}", member.mention)
-            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📅 **Joined At:** {join_date}"
             embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
             if config["image_url"]: embed.set_image(url=config["image_url"])
             embed.set_thumbnail(url=member.display_avatar.url)
-            embed.set_footer(text=f"Member Count: #{member.guild.member_count}")
-            await channel.send(content=f"Hey {member.mention}, Welcome!", embed=embed)
+            await channel.send(embed=embed)
 
 @bot.event
 async def on_member_remove(member):
@@ -80,69 +76,111 @@ async def on_member_remove(member):
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
-            leave_date = datetime.datetime.now().strftime("%d-%m-%Y")
-            desc = config["description"].replace("{member}", f"**{member.name}**")
-            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📤 **Left On:** {leave_date}"
-            embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
-            if config["image_url"]: embed.set_image(url=config["image_url"])
-            embed.set_thumbnail(url=member.display_avatar.url)
+            embed = discord.Embed(title=config["title"], description=config["description"].replace("{member}", member.name), color=config["color"])
             await channel.send(embed=embed)
 
-# ================= MODALS =================
+# ================= SECURITY & AFK LOGIC =================
 
-class WelcomeSetupModal(Modal, title="Customize Welcome"):
-    title_in = TextInput(label="Title", default="Welcome!")
-    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="Welcome {member}!")
-    gif_in = TextInput(label="GIF URL", required=False)
-    async def on_submit(self, interaction: discord.Interaction):
-        server_data["welcome"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
-        await interaction.response.send_message("✅ Welcome Updated!", ephemeral=True)
+@bot.event
+async def on_message(message):
+    if message.author.bot: return
 
-# ================= COMMANDS =================
+    # 1. AFK Status Removal
+    if message.author.id in server_data["afk_users"]:
+        del server_data["afk_users"][message.author.id]
+        await message.channel.send(f"Welcome back {message.author.mention}, I've removed your AFK!", delete_after=5)
 
-@bot.tree.command(name="setup_autorole", description="Set a role to be given automatically when a member joins")
+    # 2. AFK Mention Notification
+    if message.mentions:
+        for mentioned in message.mentions:
+            if mentioned.id in server_data["afk_users"]:
+                reason = server_data["afk_users"][mentioned.id]
+                embed = discord.Embed(description=f"📌 **{mentioned.name}** is currently AFK: {reason}", color=discord.Color.gold())
+                await message.reply(embed=embed, delete_after=10)
+
+    msg_content = message.content.lower()
+
+    # 3. Profanity Filter
+    for word in server_data["bad_words"]:
+        if word in msg_content:
+            try:
+                await message.delete()
+                embed = discord.Embed(title="🚫 Prohibited Language", description=f"{message.author.mention}, watch your language.", color=discord.Color.red())
+                await message.channel.send(embed=embed, delete_after=5)
+                return 
+            except: pass
+
+    # 4. Anti-Link Filter
+    if server_data["anti_link"]["enabled"]:
+        if "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content:
+            try:
+                await message.delete()
+                embed = discord.Embed(title="🚫 Link Blocked", description=f"{message.author.mention}, links are not allowed.", color=discord.Color.orange())
+                await message.channel.send(embed=embed, delete_after=5)
+                return
+            except: pass
+
+    await bot.process_commands(message)
+
+# ================= MODERATION & SETUP COMMANDS =================
+
+@bot.tree.command(name="afk", description="Set your AFK status")
+async def afk(interaction: discord.Interaction, reason: Optional[str] = "I am currently away!"):
+    server_data["afk_users"][interaction.user.id] = reason
+    embed = discord.Embed(description=f"✅ {interaction.user.mention}, AFK set: **{reason}**", color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="setup_autorole", description="Set a join role")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_autorole(interaction: discord.Interaction, role: discord.Role):
     server_data["auto_role_id"] = role.id
-    embed = discord.Embed(description=f"✅ **Auto-Role** set to: {role.mention}", color=discord.Color.blue())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(f"✅ Auto-Role: {role.name}", ephemeral=True)
 
-@bot.tree.command(name="addword", description="Add a prohibited word to the blocklist")
-@app_commands.checks.has_permissions(administrator=True)
-async def addword(interaction: discord.Interaction, word: str):
-    word = word.lower()
-    if word not in server_data["bad_words"]:
-        server_data["bad_words"].append(word)
-        await interaction.response.send_message(f"✅ `{word}` added to blocklist.", ephemeral=True)
-    else:
-        await interaction.response.send_message("❌ Already in the list.", ephemeral=True)
-
-@bot.tree.command(name="lock", description="Lock the current channel")
+@bot.tree.command(name="lock", description="Lock channel")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def lock(interaction: discord.Interaction):
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
-    embed = discord.Embed(description="🔒 This channel has been **Locked**.", color=discord.Color.red())
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message("🔒 Locked.")
 
-@bot.tree.command(name="unlock", description="Unlock the current channel")
+@bot.tree.command(name="unlock", description="Unlock channel")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def unlock(interaction: discord.Interaction):
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
-    embed = discord.Embed(description="🔓 This channel has been **Unlocked**.", color=discord.Color.green())
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.send_message("🔓 Unlocked.")
 
-@bot.tree.command(name="setup_welcome", description="Setup the welcome system")
-async def setup_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
-    server_data["welcome"]["channel_id"] = channel.id
-    view = View(); btn = Button(label="Customize Welcome", style=discord.ButtonStyle.success)
-    async def cb(i): await i.response.send_modal(WelcomeSetupModal())
-    btn.callback = cb; view.add_item(btn)
-    await interaction.response.send_message(f"📍 Welcome Channel: {channel.mention}", view=view, ephemeral=True)
+@bot.tree.command(name="ban", description="Ban a member")
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
+    if interaction.guild.me.top_role <= member.top_role:
+        return await interaction.response.send_message("❌ Role error!", ephemeral=True)
+    await member.ban(reason=reason)
+    await interaction.response.send_message(f"🔨 Banned {member.name}")
 
-@bot.tree.command(name="setup_leave", description="Setup the leave system")
-async def setup_leave(interaction: discord.Interaction, channel: discord.TextChannel):
-    server_data["leave"]["channel_id"] = channel.id
-    await interaction.response.send_message(f"📍 Leave Channel set to: {channel.mention}", ephemeral=True)
+@bot.tree.command(name="unban", description="Unban a user")
+@app_commands.checks.has_permissions(ban_members=True)
+async def unban(interaction: discord.Interaction, user_id: str):
+    user = await bot.fetch_user(int(user_id))
+    await interaction.guild.unban(user)
+    await interaction.response.send_message(f"✅ Unbanned {user.name}")
+
+@bot.tree.command(name="clear", description="Clear chat")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear(interaction: discord.Interaction, amount: int):
+    await interaction.response.defer(ephemeral=True)
+    await interaction.channel.purge(limit=amount)
+    await interaction.followup.send(f"🧹 Cleared {amount} messages.")
+
+@bot.tree.command(name="antilink", description="Toggle Anti-Link")
+async def antilink(interaction: discord.Interaction):
+    server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
+    await interaction.response.send_message(f"🛡️ Anti-Link: {'ON' if server_data['anti_link']['enabled'] else 'OFF'}")
+
+@bot.tree.command(name="addword", description="Block a word")
+async def addword(interaction: discord.Interaction, word: str):
+    server_data["bad_words"].append(word.lower())
+    await interaction.response.send_message(f"✅ Blocked: `{word}`")
+
+bot.run(TOKEN)
 
 @bot.tree.command(name="antilink", description="Toggle Anti-Link Security")
 async def antilink(interaction: discord.Interaction):
