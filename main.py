@@ -9,14 +9,26 @@ import datetime
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# Data Storage (Note: This resets on Railway restart)
+# Centralized Data Storage
 server_data = {
-    "anti_link": {"enabled": False},
+    "anti_link": {"enabled": False, "blocked_list": []},
     "bad_words": [],
     "auto_role_id": None,
-    "afk_users": {},
-    "welcome": {"channel_id": None, "title": "Welcome!", "description": "Welcome {member}!", "image_url": None, "color": 0x00ff00},
-    "leave": {"channel_id": None, "title": "Goodbye!", "description": "{member} left.", "color": 0xff0000}
+    "afk_users": {},  # AFK মেম্বারদের তথ্য রাখার জন্য
+    "welcome": {
+        "channel_id": None,
+        "title": "Welcome to our Server!",
+        "description": "Welcome {member}!",
+        "image_url": None,
+        "color": 0x00ff00
+    },
+    "leave": {
+        "channel_id": None,
+        "title": "Goodbye from the Server!",
+        "description": "{member} has left us. We will miss you!",
+        "image_url": None,
+        "color": 0xff0000
+    }
 }
 
 class MyBot(commands.Bot):
@@ -27,110 +39,208 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        await self.tree.sync()
-        print(f"✅ Slash Commands Synced")
+        try:
+            await self.tree.sync()
+            print(f"✅ All Slash Commands Synced")
+        except Exception as e:
+            print(f"❌ Sync Error: {e}")
 
 bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} is online!')
+    print(f'🚀 {bot.user.name} is Online with All Features!')
 
-# ================= FIXED ON_MESSAGE (CRASH PROOF) =================
+# ================= WELCOME, LEAVE & AUTO-ROLE EVENTS =================
+
+@bot.event
+async def on_member_join(member):
+    # 1. Auto-Role
+    if server_data["auto_role_id"]:
+        role = member.guild.get_role(server_data["auto_role_id"])
+        if role:
+            try: await member.add_roles(role)
+            except: pass
+
+    # 2. Welcome Message
+    config = server_data["welcome"]
+    if config["channel_id"]:
+        channel = bot.get_channel(config["channel_id"])
+        if channel:
+            join_date = member.joined_at.strftime("%d-%m-%Y")
+            desc = config["description"].replace("{member}", member.mention)
+            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📅 **Joined At:** {join_date}"
+            embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
+            if config["image_url"]: embed.set_image(url=config["image_url"])
+            embed.set_thumbnail(url=member.display_avatar.url)
+            embed.set_footer(text=f"Member #{member.guild.member_count}")
+            try: await channel.send(content=f"HEY {member.mention}", embed=embed)
+            except: pass
+
+@bot.event
+async def on_member_remove(member):
+    config = server_data["leave"]
+    if config["channel_id"]:
+        channel = bot.get_channel(config["channel_id"])
+        if channel:
+            leave_date = datetime.datetime.now().strftime("%d-%m-%Y")
+            desc = config["description"].replace("{member}", f"**{member.name}**")
+            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📤 **Left:** {leave_date}"
+            embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
+            if config["image_url"]: embed.set_image(url=config["image_url"])
+            embed.set_thumbnail(url=member.display_avatar.url)
+            try: await channel.send(embed=embed)
+            except: pass
+
+# ================= MODALS (কাস্টমাইজেশন) =================
+
+class WelcomeSetupModal(Modal, title="Customize Welcome"):
+    title_in = TextInput(label="Title", default="Welcome!")
+    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="Welcome {member}!")
+    gif_in = TextInput(label="GIF URL", required=False)
+    async def on_submit(self, interaction: discord.Interaction):
+        server_data["welcome"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
+        await interaction.response.send_message("✅ Welcome Updated!", ephemeral=True)
+
+class LeaveSetupModal(Modal, title="Customize Leave"):
+    title_in = TextInput(label="Title", default="Goodbye!")
+    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="{member} left.")
+    gif_in = TextInput(label="GIF URL", required=False)
+    async def on_submit(self, interaction: discord.Interaction):
+        server_data["leave"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
+        await interaction.response.send_message("✅ Leave Updated!", ephemeral=True)
+
+# ================= AFK & SECURITY LOGIC (on_message) =================
 
 @bot.event
 async def on_message(message):
-    # Ignore bots and DMs to prevent errors
-    if message.author.bot or not message.guild:
-        return
+    if message.author.bot or not message.guild: return
 
-    try:
-        # 1. AFK REMOVAL
-        if message.author.id in server_data["afk_users"]:
-            del server_data["afk_users"][message.author.id]
-            await message.channel.send(f"Welcome back {message.author.mention}!", delete_after=5)
+    # 1. AFK Removal
+    if message.author.id in server_data["afk_users"]:
+        del server_data["afk_users"][message.author.id]
+        try: await message.channel.send(f"Welcome back {message.author.mention}, AFK removed!", delete_after=5)
+        except: pass
 
-        # 2. AFK MENTION CHECK
-        if message.mentions:
-            for mentioned in message.mentions:
-                if mentioned.id in server_data["afk_users"]:
-                    reason = server_data["afk_users"][mentioned.id]
-                    await message.reply(f"📌 {mentioned.name} is AFK: {reason}", delete_after=10)
+    # 2. AFK Mention Notification
+    if message.mentions:
+        for mentioned in message.mentions:
+            if mentioned.id in server_data["afk_users"]:
+                reason = server_data["afk_users"][mentioned.id]
+                embed = discord.Embed(description=f"📌 **{mentioned.name}** is AFK: {reason}", color=discord.Color.gold())
+                try: await message.reply(embed=embed, delete_after=10)
+                except: pass
 
-        # 3. SECURITY FILTERS (Bad Words & Links)
-        msg_content = message.content.lower()
-        
-        # Check Bad Words
-        for word in server_data["bad_words"]:
-            if word in msg_content:
+    msg_content = message.content.lower()
+
+    # 3. Profanity/Bad Word Filter
+    for word in server_data["bad_words"]:
+        if word in msg_content:
+            try:
                 await message.delete()
-                return # Stop processing further if deleted
+                await message.channel.send(f"🚫 {message.author.mention}, Watch your language!", delete_after=5)
+                return 
+            except: pass
 
-        # Check Anti-Link
-        if server_data["anti_link"]["enabled"]:
-            if any(x in msg_content for x in ["http", "discord.gg", ".com"]):
+    # 4. Anti-Link Filter
+    if server_data["anti_link"]["enabled"]:
+        is_link = "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content
+        if is_link:
+            try:
                 await message.delete()
+                await message.channel.send(f"🚫 {message.author.mention}, Links are not allowed!", delete_after=5)
                 return
-
-    except Exception as e:
-        print(f"⚠️ Event Error: {e}") # Log the error but don't stop the bot
+            except: pass
+            
+        for blocked in server_data["anti_link"]["blocked_list"]:
+            if blocked in msg_content:
+                try: await message.delete(); return
+                except: pass
 
     await bot.process_commands(message)
 
-# ================= ALL COMMANDS INCLUDED =================
+# ================= ALL COMMANDS (আগের সব + নতুন AFK) =================
 
-@bot.tree.command(name="afk", description="Set AFK status")
-async def afk(interaction: discord.Interaction, reason: str = "Away"):
+@bot.tree.command(name="afk", description="Set your status as Away From Keyboard")
+async def afk(interaction: discord.Interaction, reason: Optional[str] = "I am currently away!"):
     server_data["afk_users"][interaction.user.id] = reason
-    await interaction.response.send_message(f"✅ AFK set: {reason}")
+    await interaction.response.send_message(f"✅ {interaction.user.mention}, AFK set: **{reason}**")
 
 @bot.tree.command(name="ban", description="Ban a member")
 @app_commands.checks.has_permissions(ban_members=True)
-async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
     if interaction.guild.me.top_role <= member.top_role:
-        return await interaction.response.send_message("❌ Role hierarchy error!", ephemeral=True)
-    await member.ban(reason=reason)
-    await interaction.response.send_message(f"🔨 Banned {member.name}")
+        return await interaction.response.send_message("❌ My role is not high enough!", ephemeral=True)
+    try:
+        await member.ban(reason=reason)
+        await interaction.response.send_message(f"🔨 Banned **{member.name}**")
+    except: await interaction.response.send_message("❌ Permission Error!", ephemeral=True)
 
-@bot.tree.command(name="unban", description="Unban via ID")
+@bot.tree.command(name="unban", description="Unban a member via ID")
 @app_commands.checks.has_permissions(ban_members=True)
 async def unban(interaction: discord.Interaction, user_id: str):
-    user = await bot.fetch_user(int(user_id))
-    await interaction.guild.unban(user)
-    await interaction.response.send_message(f"✅ Unbanned {user.name}")
+    try:
+        user = await bot.fetch_user(int(user_id))
+        await interaction.guild.unban(user)
+        await interaction.response.send_message(f"✅ Unbanned **{user.name}**")
+    except: await interaction.response.send_message("❌ User not found or not banned.", ephemeral=True)
+
+@bot.tree.command(name="setup_welcome", description="Setup Welcome System")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
+    server_data["welcome"]["channel_id"] = channel.id
+    view = View(); btn = Button(label="Edit Content", style=discord.ButtonStyle.success)
+    async def cb(i): await i.response.send_modal(WelcomeSetupModal())
+    btn.callback = cb; view.add_item(btn)
+    await interaction.response.send_message(f"📍 Welcome Channel: {channel.mention}", view=view, ephemeral=True)
+
+@bot.tree.command(name="setup_leave", description="Setup Leave System")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_leave(interaction: discord.Interaction, channel: discord.TextChannel):
+    server_data["leave"]["channel_id"] = channel.id
+    view = View(); btn = Button(label="Edit Content", style=discord.ButtonStyle.danger)
+    async def cb(i): await i.response.send_modal(LeaveSetupModal())
+    btn.callback = cb; view.add_item(btn)
+    await interaction.response.send_message(f"📍 Leave Channel: {channel.mention}", view=view, ephemeral=True)
+
+@bot.tree.command(name="setup_autorole", description="Set Auto-Role")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_autorole(interaction: discord.Interaction, role: discord.Role):
+    server_data["auto_role_id"] = role.id
+    await interaction.response.send_message(f"✅ Auto-Role set to: {role.mention}", ephemeral=True)
+
+@bot.tree.command(name="antilink", description="Toggle Anti-Link")
+async def antilink(interaction: discord.Interaction):
+    server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
+    await interaction.response.send_message(f"🛡️ Anti-Link: **{'ON' if server_data['anti_link']['enabled'] else 'OFF'}**")
+
+@bot.tree.command(name="blocklink", description="Block specific link pattern")
+async def blocklink(interaction: discord.Interaction, link: str):
+    server_data["anti_link"]["blocked_list"].append(link.lower())
+    await interaction.response.send_message(f"✅ `{link}` added to blocklist.", ephemeral=True)
+
+@bot.tree.command(name="addword", description="Add bad word")
+async def addword(interaction: discord.Interaction, word: str):
+    server_data["bad_words"].append(word.lower())
+    await interaction.response.send_message(f"✅ `{word}` blocked.", ephemeral=True)
 
 @bot.tree.command(name="lock", description="Lock channel")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def lock(interaction: discord.Interaction):
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
-    await interaction.response.send_message("🔒 Locked.")
+    await interaction.response.send_message("🔒 Channel Locked.")
 
 @bot.tree.command(name="unlock", description="Unlock channel")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def unlock(interaction: discord.Interaction):
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
-    await interaction.response.send_message("🔓 Unlocked.")
+    await interaction.response.send_message("🔓 Channel Unlocked.")
 
-@bot.tree.command(name="clear", description="Delete messages")
+@bot.tree.command(name="clear", description="Clear messages")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.defer(ephemeral=True)
-    await interaction.channel.purge(limit=amount)
-    await interaction.followup.send(f"🧹 Deleted {amount} messages.")
-
-@bot.tree.command(name="setup_welcome", description="Setup Welcome")
-async def setup_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
-    server_data["welcome"]["channel_id"] = channel.id
-    await interaction.response.send_message(f"📍 Welcome channel: {channel.mention}")
-
-@bot.tree.command(name="antilink", description="Toggle Anti-Link")
-async def antilink(interaction: discord.Interaction):
-    server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
-    await interaction.response.send_message(f"🛡️ Anti-Link: {'ON' if server_data['anti_link']['enabled'] else 'OFF'}")
-
-@bot.tree.command(name="addword", description="Block a word")
-async def addword(interaction: discord.Interaction, word: str):
-    server_data["bad_words"].append(word.lower())
-    await interaction.response.send_message(f"✅ Blocked: {word}")
+    deleted = await interaction.channel.purge(limit=amount)
+    await interaction.followup.send(f"🧹 Deleted {len(deleted)} messages.")
 
 bot.run(TOKEN)
