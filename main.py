@@ -1,89 +1,57 @@
 import os
 import discord
+from discord import app_commands
 from discord.ext import commands
+from typing import Optional
 
-# Fetching the token from Environment Variables (Important for Security)
+# Railway Variable থেকে টোকেন নেওয়া
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# Setting up bot intents
-intents = discord.Intents.default()
-intents.message_content = True
+class MyBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        # এখানে প্রিফিক্স '!' থাকলেও আমরা মূলত স্ল্যাশ কমান্ড ব্যবহার করছি
+        super().__init__(command_prefix="!", intents=intents)
 
-# Setting the command prefix
-bot = commands.Bot(command_prefix='!', intents=intents)
+    async def setup_hook(self):
+        # এটি স্ল্যাশ কমান্ডগুলো ডিসকর্ডের সাথে সিঙ্ক করবে
+        await self.tree.sync()
+        print(f"Synced slash commands for {self.user}")
+
+bot = MyBot()
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
     print('Bot is online and ready!')
 
-@bot.command()
-async def ping(ctx):
-    await ctx.send(f'Pong! Latency: {round(bot.latency * 1000)}ms')
+# --- Slash Command: Lock ---
+@bot.tree.command(name="lock", description="Locks the channel for a specific role or @everyone")
+@app_commands.describe(role="The role to lock (defaults to @everyone)")
+async def lock(interaction: discord.Interaction, role: Optional[discord.Role] = None):
+    if not interaction.user.guild_permissions.manage_channels:
+        await interaction.response.send_message("❌ Your don't have `Manage Channels` permission!", ephemeral=True)
+        return
 
-@bot.command()
-async def hello(ctx):
-    await ctx.send('Hello! I am a Python bot hosted on Railway.')
+    target_role = role if role else interaction.guild.default_role
+    await interaction.channel.set_permissions(target_role, send_messages=False)
+    await interaction.response.send_message(f"🔒 Channel has been locked for: **{target_role.name}**")
 
-import discord
-from discord.ext import commands
-from typing import Optional, Union
+# --- Slash Command: Unlock ---
+@bot.tree.command(name="unlock", description="Unlocks the channel for a specific role or @everyone")
+@app_commands.describe(role="The role to unlock (defaults to @everyone)")
+async def unlock(interaction: discord.Interaction, role: Optional[discord.Role] = None):
+    if not interaction.user.guild_permissions.manage_channels:
+        await interaction.response.send_message("❌ Your don't have `Manage Channels` permission!", ephemeral=True)
+        return
 
-# ... আগের কোডগুলো এখানে থাকবে ...
-
-@bot.command()
-@commands.has_permissions(manage_channels=True)
-async def lock(ctx, roles: commands.Greedy[discord.Role]):
-    """
-    Locks the channel for mentioned roles or @everyone if no role is mentioned.
-    Usage: !lock @Role1 @Role2  OR  !lock
-    """
-    # যদি কোনো রোল মেনশন না করা হয়, তবে @everyone রোলটি নিবে
-    target_roles = roles if roles else [ctx.guild.default_role]
-    
-    locked_roles = []
-    
-    for role in target_roles:
-        # ওই রোলের জন্য মেসেজ পাঠানোর পারমিশন বন্ধ করে দিচ্ছে
-        await ctx.channel.set_permissions(role, send_messages=False)
-        locked_roles.append(role.name)
-    
-    role_names = ", ".join(locked_roles)
-    await ctx.send(f"🔒 Channel has been locked for: **{role_names}**")
-
-@lock.error
-async def lock_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ Your don't have `Manage Channels` permission to use this command.")
-
-@bot.command()
-@commands.has_permissions(manage_channels=True)
-async def unlock(ctx, roles: commands.Greedy[discord.Role]):
-    """
-    Unlocks the channel for mentioned roles or @everyone if no role is mentioned.
-    Usage: !unlock @Role1 @Role2  OR  !unlock
-    """
-    # যদি কোনো রোল মেনশন না করা হয়, তবে @everyone রোলটি নিবে
-    target_roles = roles if roles else [ctx.guild.default_role]
-    
-    unlocked_roles = []
-    
-    for role in target_roles:
-        # ওই রোলের জন্য মেসেজ পাঠানোর পারমিশন আবার চালু (None দিলে ডিফল্ট পারমিশন সেট হয়)
-        await ctx.channel.set_permissions(role, send_messages=True)
-        unlocked_roles.append(role.name)
-    
-    role_names = ", ".join(unlocked_roles)
-    await ctx.send(f"🔓 Channel has been unlocked for: **{role_names}**")
-
-@unlock.error
-async def unlock_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ You don't have `Manage Channels` permission to use this command.")
+    target_role = role if role else interaction.guild.default_role
+    await interaction.channel.set_permissions(target_role, send_messages=True)
+    await interaction.response.send_message(f"🔓 Channel has been unlocked for: **{target_role.name}**")
 
 if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("Error: No DISCORD_TOKEN found in environment variables.")
-      
+        print("Error: No DISCORD_TOKEN found!")
