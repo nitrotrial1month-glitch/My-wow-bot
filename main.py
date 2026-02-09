@@ -37,16 +37,18 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
+        # Syncing slash commands to Discord
         await self.tree.sync()
-        print(f"✅ Synced Slash Commands for {self.user}")
+        print(f"✅ Slash commands synced for {self.user}")
 
 bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} is online and secured!')
+    print(f'🚀 Logged in as {bot.user.name}')
+    print(f'🛡️ Security Systems: Active')
 
-# ================= WELCOME & LEAVE =================
+# ================= WELCOME & LEAVE EVENTS =================
 
 @bot.event
 async def on_member_join(member):
@@ -61,7 +63,7 @@ async def on_member_join(member):
             if config["image_url"]: embed.set_image(url=config["image_url"])
             embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"Member Count: #{member.guild.member_count}")
-            await channel.send(content=f"Hey {member.mention}, Welcome!", embed=embed)
+            await channel.send(content=f"Welcome {member.mention}!", embed=embed)
 
 @bot.event
 async def on_member_remove(member):
@@ -69,80 +71,123 @@ async def on_member_remove(member):
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
-            join_date = member.joined_at.strftime("%d-%m-%Y") if member.joined_at else "Unknown"
             leave_date = datetime.datetime.now().strftime("%d-%m-%Y")
             desc = config["description"].replace("{member}", f"**{member.name}**")
-            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📥 **Joined:** {join_date}\n📤 **Left:** {leave_date}"
+            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📤 **Left On:** {leave_date}"
             embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
             if config["image_url"]: embed.set_image(url=config["image_url"])
             embed.set_thumbnail(url=member.display_avatar.url)
-            embed.set_footer(text="User Left the Server")
             await channel.send(embed=embed)
 
-# ================= MODALS =================
+# ================= MODALS FOR CUSTOMIZATION =================
 
 class WelcomeSetupModal(Modal, title="Customize Welcome"):
-    title_in = TextInput(label="Welcome Title", default="Welcome to the Server!")
+    title_in = TextInput(label="Welcome Title", default="Welcome!")
     desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="Welcome {member}!")
     gif_in = TextInput(label="Image/GIF URL", required=False)
     async def on_submit(self, interaction: discord.Interaction):
         server_data["welcome"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
-        await interaction.response.send_message("✅ Welcome settings updated!", ephemeral=True)
+        await interaction.response.send_message("✅ Welcome updated!", ephemeral=True)
 
 class LeaveSetupModal(Modal, title="Customize Leave"):
     title_in = TextInput(label="Leave Title", default="Goodbye!")
-    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="{member} just left us.")
+    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="{member} left.")
     gif_in = TextInput(label="Image/GIF URL", required=False)
     async def on_submit(self, interaction: discord.Interaction):
         server_data["leave"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
-        await interaction.response.send_message("✅ Leave settings updated!", ephemeral=True)
+        await interaction.response.send_message("✅ Leave updated!", ephemeral=True)
 
-# ================= COMMANDS =================
+# ================= MODERATION & SECURITY COMMANDS =================
 
-@bot.tree.command(name="addword", description="Add a word to the bad words list")
+@bot.tree.command(name="addword", description="Add a word to the bad words blocklist")
 @app_commands.checks.has_permissions(administrator=True)
 async def addword(interaction: discord.Interaction, word: str):
     word = word.lower()
     if word not in server_data["bad_words"]:
         server_data["bad_words"].append(word)
-        await interaction.response.send_message(f"✅ Word `{word}` added to blocklist.", ephemeral=True)
+        await interaction.response.send_message(f"✅ `{word}` is now blocked.", ephemeral=True)
     else:
-        await interaction.response.send_message("❌ This word is already in the list.", ephemeral=True)
+        await interaction.response.send_message("❌ Word already exists in list.", ephemeral=True)
 
-@bot.tree.command(name="setup_welcome", description="Setup the welcome system")
+@bot.tree.command(name="setup_welcome", description="Configure Welcome system")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
     server_data["welcome"]["channel_id"] = channel.id
-    view = View(); btn = Button(label="Customize Welcome", style=discord.ButtonStyle.success)
+    view = View(); btn = Button(label="Edit Content", style=discord.ButtonStyle.success)
     async def cb(i): await i.response.send_modal(WelcomeSetupModal())
     btn.callback = cb; view.add_item(btn)
-    await interaction.response.send_message(f"📍 Welcome channel set to: {channel.mention}", view=view, ephemeral=True)
+    await interaction.response.send_message(f"📍 Welcome channel: {channel.mention}", view=view, ephemeral=True)
 
-@bot.tree.command(name="setup_leave", description="Setup the leave system")
+@bot.tree.command(name="setup_leave", description="Configure Leave system")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_leave(interaction: discord.Interaction, channel: discord.TextChannel):
     server_data["leave"]["channel_id"] = channel.id
-    view = View(); btn = Button(label="Customize Leave", style=discord.ButtonStyle.danger)
+    view = View(); btn = Button(label="Edit Content", style=discord.ButtonStyle.danger)
     async def cb(i): await i.response.send_modal(LeaveSetupModal())
     btn.callback = cb; view.add_item(btn)
-    await interaction.response.send_message(f"📍 Leave channel set to: {channel.mention}", view=view, ephemeral=True)
+    await interaction.response.send_message(f"📍 Leave channel: {channel.mention}", view=view, ephemeral=True)
 
-@bot.tree.command(name="antilink", description="Enable or Disable Anti-Link")
+@bot.tree.command(name="antilink", description="Enable/Disable Anti-Link")
 @app_commands.checks.has_permissions(administrator=True)
 async def antilink(interaction: discord.Interaction):
     server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
     status = "Enabled" if server_data["anti_link"]["enabled"] else "Disabled"
-    embed = discord.Embed(description=f"🛡️ Anti-Link Security is now **{status}**.", color=discord.Color.blue())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(f"🛡️ Anti-Link is now **{status}**", ephemeral=True)
 
-@bot.tree.command(name="lock", description="Lock the current channel")
+@bot.tree.command(name="lock", description="Lock this channel")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def lock(interaction: discord.Interaction):
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
-    embed = discord.Embed(description="🔒 This channel has been **Locked**.", color=discord.Color.red())
+    embed = discord.Embed(description="🔒 **Channel Locked**", color=discord.Color.red())
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="unlock", description="Unlock the current channel")
+@bot.tree.command(name="unlock", description="Unlock this channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def unlock(interaction: discord.Interaction):
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
+    embed = discord.Embed(description="🔓 **Channel Unlocked**", color=discord.Color.green())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="clear", description="Clear messages")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear(interaction: discord.Interaction, amount: int):
+    await interaction.response.defer(ephemeral=True)
+    deleted = await interaction.channel.purge(limit=amount)
+    await interaction.followup.send(f"🧹 Cleared {len(deleted)} messages.")
+
+# ================= AUTO-MODERATION LOGIC =================
+
+
+
+@bot.event
+async def on_message(message):
+    if message.author.bot: return
+
+    content = message.content.lower()
+
+    # 1. Bad Words Filter
+    for word in server_data["bad_words"]:
+        if word in content:
+            try:
+                await message.delete()
+                embed = discord.Embed(title="🚫 Restricted Content", description=f"{message.author.mention}, your message contained prohibited words.", color=discord.Color.red())
+                await message.channel.send(embed=embed, delete_after=5)
+                return 
+            except: pass
+
+    # 2. Anti-Link Filter
+    if server_data["anti_link"]["enabled"]:
+        if "http" in content or "discord.gg" in content or ".com" in content:
+            try:
+                await message.delete()
+                embed = discord.Embed(title="🚫 Link Blocked", description=f"{message.author.mention}, sending links is restricted here.", color=discord.Color.orange())
+                await message.channel.send(embed=embed, delete_after=5)
+                return
+            except: pass
+
+    await bot.process_commands(message)
+
+bot.run(TOKEN)
 @app_commands.checks.has_permissions(manage_channels=True)
 async def unlock(interaction: discord.Interaction):
     await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
