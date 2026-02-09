@@ -80,31 +80,6 @@ async def unlock(ctx, roles: commands.Greedy[discord.Role]):
 async def unlock_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ You don't have `Manage Channels` permission to use this command.")
-       @bot.command(name="Hide")
-@commands.has_permissions(manage_channels=True)
-async def hide(ctx, roles: commands.Greedy[discord.Role]):
-    """
-    Hides the channel for mentioned roles or @everyone if no role is mentioned.
-    Usage: !Hide @Role1 @Role2  OR  !Hide
-    """
-    # কোনো রোল মেনশন না করলে @everyone রোলটি টার্গেট হবে
-    target_roles = roles if roles else [ctx.guild.default_role]
-    
-    hidden_roles = []
-    
-    for role in target_roles:
-        # ওই রোলের জন্য চ্যানেল দেখার পারমিশন (view_channel) বন্ধ করে দিচ্ছে
-        await ctx.channel.set_permissions(role, view_channel=False)
-        hidden_roles.append(role.name)
-    
-    role_names = ", ".join(hidden_roles)
-    await ctx.send(f"🙈 Channel is now hidden for: **{role_names}**")
-
-@hide.error
-async def hide_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ You don't have `Manage Channels` permission to use this command.")
-        
 
 if __name__ == "__main__":
     if TOKEN:
