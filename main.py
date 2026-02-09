@@ -55,6 +55,31 @@ async def lock(ctx, roles: commands.Greedy[discord.Role]):
 async def lock_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ Your don't have `Manage Channels` permission to use this command.")
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def unlock(ctx, roles: commands.Greedy[discord.Role]):
+    """
+    Unlocks the channel for mentioned roles or @everyone if no role is mentioned.
+    Usage: !unlock @Role1 @Role2  OR  !unlock
+    """
+    # যদি কোনো রোল মেনশন না করা হয়, তবে @everyone রোলটি নিবে
+    target_roles = roles if roles else [ctx.guild.default_role]
+    
+    unlocked_roles = []
+    
+    for role in target_roles:
+        # ওই রোলের জন্য মেসেজ পাঠানোর পারমিশন আবার চালু (None দিলে ডিফল্ট পারমিশন সেট হয়)
+        await ctx.channel.set_permissions(role, send_messages=True)
+        unlocked_roles.append(role.name)
+    
+    role_names = ", ".join(unlocked_roles)
+    await ctx.send(f"🔓 Channel has been unlocked for: **{role_names}**")
+
+@unlock.error
+async def unlock_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ You don't have `Manage Channels` permission to use this command.")
         
 
 if __name__ == "__main__":
