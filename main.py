@@ -12,6 +12,8 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 # সব ডেটা স্টোরেজ (Anti-Link + Welcome + Leave)
 server_data = {
     "anti_link": {"enabled": False, "blocked": []},
+"bad_words": [], # এখানে আপনি যেসব শব্দ ব্লক করবেন সেগুলো জমা হবে
+    
     "welcome": {
         "channel_id": None,
         "title": "Welcome to our Server!",
@@ -139,6 +141,16 @@ async def antilink(interaction: discord.Interaction):
     btn.callback = cb; view.add_item(btn)
     await interaction.response.send_message("🛡️ Anti-Link Control", view=view, ephemeral=True)
 
+@bot.tree.command(name="addword", description="সার্ভারে কোনো শব্দ নিষিদ্ধ করুন")
+@app_commands.checks.has_permissions(administrator=True)
+async def addword(interaction: discord.Interaction, word: str):
+    word_lower = word.lower()
+    if word_lower not in server_data["bad_words"]:
+        server_data["bad_words"].append(word_lower)
+        await interaction.response.send_message(f"✅ `{word}` শব্দটি ব্লকলিস্টে যোগ করা হয়েছে।", ephemeral=True)
+    else:
+        await interaction.response.send_message("❌ এই শব্দটি আগেই তালিকায় আছে।", ephemeral=True)
+        
 @bot.tree.command(name="blocklink", description="Block a specific link")
 async def blocklink(interaction: discord.Interaction, link: str):
     server_data["anti_link"]["blocked"].append(link.lower())
@@ -217,5 +229,26 @@ async def on_message(message):
                     return
                 except: pass
     await bot.process_commands(message)
+    @bot.event
+async def on_message(message):
+    if message.author.bot: return
+
+    # --- ব্যাড ওয়ার্ড ফিল্টার লজিক শুরু ---
+    for word in server_data["bad_words"]:
+        if word in message.content.lower():
+            try:
+                await message.delete()
+                await message.channel.send(f"🚫 {message.author.mention}, খারাপ শব্দ ব্যবহার করা নিষিদ্ধ!", delete_after=5)
+                return # শব্দ পাওয়া গেলে এখানেই কাজ থামাবে, নিচের এন্টি-লিংক আর চেক করবে না
+            except:
+                pass
+    # --- ব্যাড ওয়ার্ড ফিল্টার লজিক শেষ ---
+
+    # এখানে আপনার আগের এন্টি-লিংক এবং প্রসেস কমান্ড লজিক থাকবে...
+    if server_data["anti_link"]["enabled"]:
+        # ... আগের কোড ...
+    
+    await bot.process_commands(message)
+    
 
 bot.run(TOKEN)
