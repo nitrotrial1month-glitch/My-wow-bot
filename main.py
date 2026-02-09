@@ -39,11 +39,30 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
+        # --- এই অংশটুকু যোগ করুন ---
+        # টিকিট বাটনগুলো রিস্টার্টের পর সচল রাখার জন্য রেজিস্ট্রেশন
+        try:
+            from cogs.ticket import TicketLaunch, TicketControl
+            self.add_view(TicketLaunch())
+            self.add_view(TicketControl())
+            print("✅ Ticket Views Registered")
+        except Exception as e:
+            print(f"⚠️ View registration skipped (file might not exist yet): {e}")
+
+        # cogs ফোল্ডারের ভেতর থাকা ফাইল লোড করা
+        if os.path.exists('./cogs'):
+            for filename in os.listdir('./cogs'):
+                if filename.endswith('.py'):
+                    await self.load_extension(f'cogs.{filename[:-3]}')
+                    print(f"✅ Loaded: {filename}")
+        
+        # কমান্ড সিঙ্ক করা
         try:
             await self.tree.sync()
             print(f"✅ All Slash Commands Synced")
         except Exception as e:
             print(f"❌ Sync Error: {e}")
+
 
 bot = MyBot()
 
