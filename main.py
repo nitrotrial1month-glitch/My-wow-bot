@@ -8,7 +8,7 @@ from typing import Optional
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# একীভূত ডেটা স্টোরেজ
+# সব ডেটা স্টোরেজ (Anti-Link + Welcome + Leave)
 server_data = {
     "anti_link": {"enabled": False, "blocked": []},
     "welcome": {
@@ -31,7 +31,7 @@ class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
-        intents.members = True 
+        intents.members = True # এটি Welcome এবং Leave ইভেন্টের জন্য অবশ্যই লাগবে
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
@@ -65,6 +65,7 @@ async def on_member_remove(member):
     if config["channel_id"]:
         channel = bot.get_channel(config["channel_id"])
         if channel:
+            # মেম্বার চলে গেলে তাকে মেনশন করা যায় না, তাই শুধু নাম দেখানো হচ্ছে
             desc = config["description"].replace("{member}", f"**{member.name}**")
             embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
             if config["image_url"]: embed.set_image(url=config["image_url"])
@@ -75,7 +76,7 @@ async def on_member_remove(member):
 # ================= MODALS & DASHBOARDS =================
 
 class WelcomeSetupModal(Modal, title="Customize Welcome Message"):
-    title_input = TextInput(label="Title", placeholder="🌸 WELCOME TO MY SERVER 🌸")
+    title_input = TextInput(label="Title", placeholder="🌸 WELCOME 🌸")
     desc_input = TextInput(label="Description", style=discord.TextStyle.paragraph, default=server_data["welcome"]["description"])
     gif_input = TextInput(label="GIF URL", placeholder="Paste link here.", required=False)
 
@@ -143,6 +144,18 @@ async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.send_message(f"🧹 Cleared {amount} messages.", ephemeral=True)
 
 # ================= MESSAGE LOGIC =================
+
+@bot.event
+async def on_message(message):
+    if message.author.bot: return
+    if server_data["anti_link"]["enabled"]:
+        for blocked in server_data["anti_link"]["blocked"]:
+            if blocked in message.content.lower():
+                try: await message.delete(); await message.channel.send(f"🚫 {message.author.mention}, no links!", delete_after=5); return
+                except: pass
+    await bot.process_commands(message)
+
+bot.run(TOKEN)
 
 @bot.event
 async def on_message(message):
