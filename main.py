@@ -2,14 +2,26 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.ui import View, Button, Select
-import asyncio  # এটি খুবই গুরুত্বপূর্ণ, যা ক্রাশ রোধ করবে
+from discord.ui import View, Button, Select, Modal, TextInput
+import asyncio
 
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# টিকিট কাউন্টার (বট রিস্টার্ট দিলে এটি ০ হবে, ডাটাবেজ ছাড়া এটিই নিয়ম)
-ticket_data = {"count": 0}
+# Centralized Ticket Data
+server_data = {
+    "ticket_count": 0,
+    "dashboard": {
+        "title": "📩 Support Center",
+        "description": "Select a category to open a ticket.",
+        "image": "https://i.imgur.com/vHq49Yj.png"
+    },
+    "inside_message": {
+        "title": "Support Ticket",
+        "description": "Hello {member}, please wait for staff.",
+        "color": discord.Color.blue().value
+    }
+}
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -19,116 +31,116 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # Persistent Views: যাতে বট রিস্টার্ট হলেও বাটন কাজ করে
+        # Persistent Views - রিস্টার্টের পর বাটন সচল রাখতে
         self.add_view(TicketLauncher())
         self.add_view(TicketControl())
         await self.tree.sync()
-        print(f"✅ Unique Ticket System Synced")
 
 bot = MyBot()
 
-# ================= ইউনিক টিকিট সিস্টেম লজিক =================
+# ================= MODALS FOR DASHBOARD =================
 
+class DashboardEditModal(Modal, title="Edit Ticket Dashboard"):
+    title_in = TextInput(label="Main Title", default=server_data["dashboard"]["title"])
+    desc_in = TextInput(label="Main Description", style=discord.TextStyle.paragraph, default=server_data["dashboard"]["description"])
+    img_in = TextInput(label="Image URL", default=server_data["dashboard"]["image"], required=False)
 
+    async def on_submit(self, interaction: discord.Interaction):
+        server_data["dashboard"].update({
+            "title": self.title_in.value,
+            "description": self.desc_in.value,
+            "image": self.img_in.value
+        })
+        await interaction.response.send_message("✅ Dashboard Settings Updated! Use `/ticket_setup` to see changes.", ephemeral=True)
+
+class InsideEditModal(Modal, title="Edit Inside Ticket Message"):
+    title_in = TextInput(label="Ticket Title", default=server_data["inside_message"]["title"])
+    desc_in = TextInput(label="Ticket Description", style=discord.TextStyle.paragraph, default=server_data["inside_message"]["description"])
+
+    async def on_submit(self, interaction: discord.Interaction):
+        server_data["inside_message"].update({
+            "title": self.title_in.value,
+            "description": self.desc_in.value
+        })
+        await interaction.response.send_message("✅ Inside Ticket Message Updated!", ephemeral=True)
+
+# ================= TICKET VIEWS =================
 
 class TicketControl(View):
-    """টিকিট চ্যানেলের ভেতরের কন্ট্রোল বাটন"""
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_btn")
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="persistent_close")
     async def close(self, interaction: discord.Interaction):
-        await interaction.response.send_message("⚠️ এই টিকিটটি ৫ সেকেন্ডের মধ্যে ডিলিট হয়ে যাবে...", ephemeral=False)
+        await interaction.response.send_message("⚠️ Closing in 5 seconds...", ephemeral=False)
         await asyncio.sleep(5)
         await interaction.channel.delete()
 
-    @discord.ui.button(label="Claim", style=discord.ButtonStyle.success, emoji="🙋‍♂️", custom_id="claim_btn")
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.success, emoji="🙋‍♂️", custom_id="persistent_claim")
     async def claim(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.manage_channels:
-            return await interaction.response.send_message("❌ শুধুমাত্র স্টাফরা এটি ক্লেম করতে পারবেন!", ephemeral=True)
-        
-        await interaction.response.send_message(f"✅ এই টিকিটটি এখন থেকে {interaction.user.mention} হ্যান্ডেল করছেন।", ephemeral=False)
+        await interaction.response.send_message(f"✅ Claimed by {interaction.user.mention}", ephemeral=False)
         self.claim.disabled = True
         await interaction.message.edit(view=self)
 
 class TicketDropdown(Select):
-    """ড্রপডাউন মেনু যেখানে ক্যাটাগরি থাকবে"""
     def __init__(self):
         options = [
-            discord.SelectOption(label="General Support", description="সাধারণ সমস্যার জন্য", emoji="🛠️"),
-            discord.SelectOption(label="Report Member", description="কাউকে রিপোর্ট করতে", emoji="🚫"),
-            discord.SelectOption(label="Giveaway/Prizes", description="পুরস্কার সংক্রান্ত", emoji="🎁"),
+            discord.SelectOption(label="General Support", emoji="🛠️"),
+            discord.SelectOption(label="Report Member", emoji="🚫")
         ]
-        super().__init__(placeholder="টিকিট খোলার কারণ নির্বাচন করুন...", min_values=1, max_values=1, options=options, custom_id="ticket_select")
+        super().__init__(placeholder="Choose category...", custom_id="persistent_drop")
 
     async def callback(self, interaction: discord.Interaction):
-        # সিরিয়াল নাম্বার বাড়ানো
-        ticket_data["count"] += 1
-        num = ticket_data["count"]
+        server_data["ticket_count"] += 1
+        num = server_data["ticket_count"]
         
-        guild = interaction.guild
-        user = interaction.user
-        category_name = "🎫 ACTIVE TICKETS"
-        
-        # ক্যাটাগরি তৈরি বা চেক করা
-        category = discord.utils.get(guild.categories, name=category_name)
-        if not category:
-            category = await guild.create_category(category_name)
-
-        # পারমিশন লজিক: শুধু ওই ইউজার এবং অ্যাডমিনরা দেখবে
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+            interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            interaction.guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
-
-        # ইউনিক চ্যানেল নাম: ticket-1, ticket-2
-        channel = await guild.create_text_channel(
-            name=f"ticket-{num}",
-            category=category,
-            overwrites=overwrites
-        )
-
-        await interaction.response.send_message(f"✅ আপনার টিকিট তৈরি হয়েছে: {channel.mention}", ephemeral=True)
-
-        embed = discord.Embed(
-            title=f"Support Ticket #{num}",
-            description=f"হ্যালো {user.mention}, আমাদের সাপোর্ট টিমে আপনাকে স্বাগতম।\nদয়া করে আপনার সমস্যার কথা লিখুন। স্টাফরা দ্রুত আপনার সাথে যোগাযোগ করবে।",
-            color=discord.Color.from_rgb(88, 101, 242)
-        )
-        embed.add_field(name="Category", value=self.values[0])
-        embed.set_footer(text="Unique Ticket Management")
         
+        channel = await interaction.guild.create_text_channel(name=f"ticket-{num}", overwrites=overwrites)
+        await interaction.response.send_message(f"✅ Ticket: {channel.mention}", ephemeral=True)
+
+        # টিকিট চ্যানেলের ভেতরের মেসেজ
+        config = server_data["inside_message"]
+        embed = discord.Embed(title=config["title"], description=config["description"].replace("{member}", interaction.user.mention), color=config["color"])
         await channel.send(embed=embed, view=TicketControl())
 
 class TicketLauncher(View):
-    """টিকিট শুরুর মেইন ভিউ"""
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(TicketDropdown())
 
-# ================= কমান্ডস =================
+# ================= COMMANDS =================
 
-@bot.tree.command(name="ticket_setup", description="অ্যাডভান্সড টিকিট সিস্টেম সেটআপ করুন")
-@app_commands.checks.has_permissions(administrator=True)
+@bot.tree.command(name="ticket_setup", description="Deploy the ticket system")
 async def ticket_setup(interaction: discord.Interaction, channel: discord.TextChannel):
-    embed = discord.Embed(
-        title="📩 সাপোর্ট সেন্টার",
-        description="আমাদের সাথে সরাসরি কথা বলতে নিচের ড্রপডাউন মেনু থেকে সঠিক ক্যাটাগরি সিলেক্ট করে টিকিট ওপেন করুন।",
-        color=discord.Color.blue()
-    )
-    # একটি ইউনিক লুক দেওয়ার জন্য ব্যানার ইমেজ (অপশনাল)
-    embed.set_image(url="https://i.imgur.com/vHq49Yj.png") 
+    config = server_data["dashboard"]
+    embed = discord.Embed(title=config["title"], description=config["description"], color=discord.Color.blue())
+    if config["image"]: embed.set_image(url=config["image"])
     
     await channel.send(embed=embed, view=TicketLauncher())
-    await interaction.response.send_message("✅ টিকিট সিস্টেম সফলভাবে সেটআপ হয়েছে!", ephemeral=True)
+    await interaction.response.send_message("✅ Ticket System Deployed!", ephemeral=True)
+
+@bot.tree.command(name="ticket_dashboard", description="Control Ticket Settings")
+@app_commands.checks.has_permissions(administrator=True)
+async def ticket_dashboard(interaction: discord.Interaction):
+    view = View()
+    btn1 = Button(label="Edit Main Dashboard", style=discord.ButtonStyle.primary)
+    btn2 = Button(label="Edit Inside Message", style=discord.ButtonStyle.secondary)
+    
+    async def cb1(i): await i.response.send_modal(DashboardEditModal())
+    async def cb2(i): await i.response.send_modal(InsideEditModal())
+    
+    btn1.callback = cb1; btn2.callback = cb2
+    view.add_item(btn1); view.add_item(btn2)
+    
+    await interaction.response.send_message("⚙️ **Ticket Control Dashboard**\nChoose what to customize:", view=view, ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} ইউনিক টিকিট সিস্টেম চালু হয়েছে!')
+    print(f'🚀 Bot is Ready!')
 
-# রেলওয়ে হোস্টিং এর জন্য এরর হ্যান্ডলিং
-try:
-    bot.run(TOKEN)
-except Exception as e:
-    print(f"❌ বট চালু হতে সমস্যা হয়েছে: {e}")
+bot.run(TOKEN)
