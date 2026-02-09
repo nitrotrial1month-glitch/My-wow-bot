@@ -181,6 +181,76 @@ async def addword(interaction: discord.Interaction, word: str):
     await interaction.response.send_message(f"✅ Blocked: `{word}`")
 
 bot.run(TOKEN)
+    if server_data["anti_link"]["enabled"]:
+        if "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content:
+            try:
+                await message.delete()
+                embed = discord.Embed(title="🚫 Link Blocked", description=f"{message.author.mention}, links are not allowed.", color=discord.Color.orange())
+                await message.channel.send(embed=embed, delete_after=5)
+                return
+            except: pass
+
+    await bot.process_commands(message)
+
+# ================= MODERATION & SETUP COMMANDS =================
+
+@bot.tree.command(name="afk", description="Set your AFK status")
+async def afk(interaction: discord.Interaction, reason: Optional[str] = "I am currently away!"):
+    server_data["afk_users"][interaction.user.id] = reason
+    embed = discord.Embed(description=f"✅ {interaction.user.mention}, AFK set: **{reason}**", color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="setup_autorole", description="Set a join role")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_autorole(interaction: discord.Interaction, role: discord.Role):
+    server_data["auto_role_id"] = role.id
+    await interaction.response.send_message(f"✅ Auto-Role: {role.name}", ephemeral=True)
+
+@bot.tree.command(name="lock", description="Lock channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def lock(interaction: discord.Interaction):
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+    await interaction.response.send_message("🔒 Locked.")
+
+@bot.tree.command(name="unlock", description="Unlock channel")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def unlock(interaction: discord.Interaction):
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
+    await interaction.response.send_message("🔓 Unlocked.")
+
+@bot.tree.command(name="ban", description="Ban a member")
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason"):
+    if interaction.guild.me.top_role <= member.top_role:
+        return await interaction.response.send_message("❌ Role error!", ephemeral=True)
+    await member.ban(reason=reason)
+    await interaction.response.send_message(f"🔨 Banned {member.name}")
+
+@bot.tree.command(name="unban", description="Unban a user")
+@app_commands.checks.has_permissions(ban_members=True)
+async def unban(interaction: discord.Interaction, user_id: str):
+    user = await bot.fetch_user(int(user_id))
+    await interaction.guild.unban(user)
+    await interaction.response.send_message(f"✅ Unbanned {user.name}")
+
+@bot.tree.command(name="clear", description="Clear chat")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear(interaction: discord.Interaction, amount: int):
+    await interaction.response.defer(ephemeral=True)
+    await interaction.channel.purge(limit=amount)
+    await interaction.followup.send(f"🧹 Cleared {amount} messages.")
+
+@bot.tree.command(name="antilink", description="Toggle Anti-Link")
+async def antilink(interaction: discord.Interaction):
+    server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
+    await interaction.response.send_message(f"🛡️ Anti-Link: {'ON' if server_data['anti_link']['enabled'] else 'OFF'}")
+
+@bot.tree.command(name="addword", description="Block a word")
+async def addword(interaction: discord.Interaction, word: str):
+    server_data["bad_words"].append(word.lower())
+    await interaction.response.send_message(f"✅ Blocked: `{word}`")
+
+bot.run(TOKEN)
 
 @bot.tree.command(name="antilink", description="Toggle Anti-Link Security")
 async def antilink(interaction: discord.Interaction):
