@@ -25,6 +25,38 @@ async def ping(ctx):
 async def hello(ctx):
     await ctx.send('Hello! I am a Python bot hosted on Railway.')
 
+import discord
+from discord.ext import commands
+from typing import Optional, Union
+
+# ... আগের কোডগুলো এখানে থাকবে ...
+
+@bot.command()
+@commands.has_permissions(manage_channels=True)
+async def lock(ctx, roles: commands.Greedy[discord.Role]):
+    """
+    Locks the channel for mentioned roles or @everyone if no role is mentioned.
+    Usage: !lock @Role1 @Role2  OR  !lock
+    """
+    # যদি কোনো রোল মেনশন না করা হয়, তবে @everyone রোলটি নিবে
+    target_roles = roles if roles else [ctx.guild.default_role]
+    
+    locked_roles = []
+    
+    for role in target_roles:
+        # ওই রোলের জন্য মেসেজ পাঠানোর পারমিশন বন্ধ করে দিচ্ছে
+        await ctx.channel.set_permissions(role, send_messages=False)
+        locked_roles.append(role.name)
+    
+    role_names = ", ".join(locked_roles)
+    await ctx.send(f"🔒 Channel has been locked for: **{role_names}**")
+
+@lock.error
+async def lock_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Your don't have `Manage Channels` permission to use this command.")
+        
+
 if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
