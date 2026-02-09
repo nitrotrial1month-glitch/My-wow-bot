@@ -2,115 +2,132 @@ import os
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.ui import View, Button, Modal, TextInput
-from typing import Optional
-import datetime
+from discord.ui import View, Button, Select, Modal, TextInput
+import asyncio
 
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# Centralized Data Storage
-server_data = {
-    "anti_link": {"enabled": False, "blocked_list": []},
-    "bad_words": [],
-    "auto_role_id": None,
-    "afk_users": {},  # AFK মেম্বারদের তথ্য রাখার জন্য
-    "ticket_count": 0, # টিকিট নম্বর ট্র্যাক করার জন্য
-    # আপনার বাকি আগের ডেটাগুলো এখানে থাকবে...
-}
-
-    "welcome": {
-        "channel_id": None,
-        "title": "Welcome to our Server!",
-        "description": "Welcome {member}!",
-        "image_url": None,
-        "color": 0x00ff00
-    },
-    "leave": {
-        "channel_id": None,
-        "title": "Goodbye from the Server!",
-        "description": "{member} has left us. We will miss you!",
-        "image_url": None,
-        "color": 0xff0000
-    }
+# টিকিটের সিরিয়াল নাম্বার সেভ রাখার জন্য (বট রিস্টার্ট দিলে এটি ০ হয়ে যাবে)
+# স্থায়ী করতে চাইলে ডাটাবেজ লাগবে। আপাতত এটি ১ থেকে শুরু হবে।
+ticket_config = {
+    "counter": 0
 }
 
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
-        intents.members = True 
+        intents.members = True
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        try:
-            await self.tree.sync()
-            print(f"✅ All Slash Commands Synced")
-        except Exception as e:
-            print(f"❌ Sync Error: {e}")
+        # রিস্টার্টের পর বাটন সচল রাখতে ভিউ রেজিস্টার করা
+        self.add_view(TicketLauncher())
+        await self.tree.sync()
+        print(f"✅ Unique Ticket System Synced")
 
 bot = MyBot()
 
+# ================= TICKET UI COMPONENTS =================
+
+
+
+class TicketControlView(View):
+    """টিকিট চ্যানেলের ভেতরের বাটন (Close & Claim)"""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="ticket_close")
+    async def close(self, interaction: discord.Interaction):
+        await interaction.response.send_message("This ticket will close in 5 seconds...", ephemeral=False)
+        await asyncio.sleep(5)
+        await interaction.channel.delete()
+
+    @discord.ui.button(label="Claim Ticket", style=discord.ButtonStyle.success, emoji="🙋‍♂️", custom_id="ticket_claim")
+    async def claim(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.manage_channels:
+            return await interaction.response.send_message("Only staff can claim tickets!", ephemeral=True)
+        
+        await interaction.response.send_message(f"✅ This ticket has been claimed by {interaction.user.mention}", ephemeral=False)
+        self.claim.disabled = True
+        await interaction.message.edit(view=self)
+
+class TicketDropdown(Select):
+    """টিকিট ক্যাটাগরি সিলেক্ট করার মেনু"""
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Support", description="General support queries", emoji="🛠️"),
+            discord.SelectOption(label="Reporting", description="Report a member or bug", emoji="🚫"),
+            discord.SelectOption(label="Partnership", description="Apply for partnership", emoji="🤝"),
+        ]
+        super().__init__(placeholder="Why are you opening a ticket?", min_values=1, max_values=1, options=options, custom_id="ticket_select")
+
+    async def callback(self, interaction: discord.Interaction):
+        ticket_config["counter"] += 1
+        num = ticket_config["counter"]
+        
+        guild = interaction.guild
+        user = interaction.user
+        category_name = "ACTIVE TICKETS"
+        
+        # ক্যাটাগরি চেক বা তৈরি
+        category = discord.utils.get(guild.categories, name=category_name)
+        if not category:
+            category = await guild.create_category(category_name)
+
+        # চ্যানেল পারমিশন
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=True, attach_files=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+
+        # ইউনিক নাম (ticket-1, ticket-2)
+        channel = await guild.create_text_channel(
+            name=f"ticket-{num}",
+            category=category,
+            overwrites=overwrites,
+            topic=f"Ticket for {user.name} | Category: {self.values[0]}"
+        )
+
+        await interaction.response.send_message(f"✅ Your ticket is ready: {channel.mention}", ephemeral=True)
+
+        # টিকিটের ভেতরের মেসেজ
+        embed = discord.Embed(
+            title=f"Ticket #{num} | {self.values[0]}",
+            description=f"Hello {user.mention}, thank you for reaching out.\nStaff will be with you shortly. Use the buttons below to manage this ticket.",
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text="Ticket Management System")
+        await channel.send(embed=embed, view=TicketControlView())
+
+class TicketLauncher(View):
+    """মূল বাটন ভিউ"""
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketDropdown())
+
+# ================= COMMANDS =================
+
+@bot.tree.command(name="ticket_setup", description="Setup the unique ticket system")
+@app_commands.checks.has_permissions(administrator=True)
+async def ticket_setup(interaction: discord.Interaction, channel: discord.TextChannel):
+    embed = discord.Embed(
+        title="📩 Contact Support",
+        description="To create a private ticket with the staff, please select the category from the dropdown menu below.",
+        color=discord.Color.from_rgb(47, 49, 54)
+    )
+    embed.set_image(url="https://i.imgur.com/K4oN1Y6.png") # একটি সুন্দর ব্যানার ইউআরএল দিতে পারেন
+    
+    await channel.send(embed=embed, view=TicketLauncher())
+    await interaction.response.send_message("✅ Ticket System has been setup successfully!", ephemeral=True)
+
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} is Online with All Features!')
+    print(f'🚀 {bot.user.name} Ticket Bot is Online!')
 
-# ================= WELCOME, LEAVE & AUTO-ROLE EVENTS =================
-
-@bot.event
-async def on_member_join(member):
-    # 1. Auto-Role
-    if server_data["auto_role_id"]:
-        role = member.guild.get_role(server_data["auto_role_id"])
-        if role:
-            try: await member.add_roles(role)
-            except: pass
-
-    # 2. Welcome Message
-    config = server_data["welcome"]
-    if config["channel_id"]:
-        channel = bot.get_channel(config["channel_id"])
-        if channel:
-            join_date = member.joined_at.strftime("%d-%m-%Y")
-            desc = config["description"].replace("{member}", member.mention)
-            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📅 **Joined At:** {join_date}"
-            embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
-            if config["image_url"]: embed.set_image(url=config["image_url"])
-            embed.set_thumbnail(url=member.display_avatar.url)
-            embed.set_footer(text=f"Member #{member.guild.member_count}")
-            try: await channel.send(content=f"HEY {member.mention}", embed=embed)
-            except: pass
-
-@bot.event
-async def on_member_remove(member):
-    config = server_data["leave"]
-    if config["channel_id"]:
-        channel = bot.get_channel(config["channel_id"])
-        if channel:
-            leave_date = datetime.datetime.now().strftime("%d-%m-%Y")
-            desc = config["description"].replace("{member}", f"**{member.name}**")
-            desc += f"\n\n🏟️ **Server:** {member.guild.name}\n📤 **Left:** {leave_date}"
-            embed = discord.Embed(title=config["title"], description=desc, color=config["color"])
-            if config["image_url"]: embed.set_image(url=config["image_url"])
-            embed.set_thumbnail(url=member.display_avatar.url)
-            try: await channel.send(embed=embed)
-            except: pass
-
-# ================= MODALS (কাস্টমাইজেশন) =================
-
-class WelcomeSetupModal(Modal, title="Customize Welcome"):
-    title_in = TextInput(label="Title", default="Welcome!")
-    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="Welcome {member}!")
-    gif_in = TextInput(label="GIF URL", required=False)
-    async def on_submit(self, interaction: discord.Interaction):
-        server_data["welcome"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
-        await interaction.response.send_message("✅ Welcome Updated!", ephemeral=True)
-
-class LeaveSetupModal(Modal, title="Customize Leave"):
-    title_in = TextInput(label="Title", default="Goodbye!")
-    desc_in = TextInput(label="Description", style=discord.TextStyle.paragraph, default="{member} left.")
-    gif_in = TextInput(label="GIF URL", required=False)
-    async def on_submit(self, interaction: discord.Interaction):
+bot.run(TOKEN)
         server_data["leave"].update({"title": self.title_in.value, "description": self.desc_in.value, "image_url": self.gif_in.value})
         await interaction.response.send_message("✅ Leave Updated!", ephemeral=True)
 
