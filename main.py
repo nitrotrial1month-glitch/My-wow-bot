@@ -98,15 +98,15 @@ class LeaveSetupModal(Modal, title="Customize Leave"):
 
 # ================= COMMANDS =================
 
-@bot.tree.command(name="addword", description="Add banned words")
+@bot.tree.command(name="addword", description="নিষিদ্ধ শব্দ যোগ করুন")
 @app_commands.checks.has_permissions(administrator=True)
 async def addword(interaction: discord.Interaction, word: str):
     word = word.lower()
     if word not in server_data["bad_words"]:
         server_data["bad_words"].append(word)
-        await interaction.response.send_message(f"✅ `{word}` Added to blocklist।", ephemeral=True)
+        await interaction.response.send_message(f"✅ `{word}` ব্লকলিস্টে যোগ হয়েছে।", ephemeral=True)
     else:
-        await interaction.response.send_message("❌ It already exists.।", ephemeral=True)
+        await interaction.response.send_message("❌ এটি আগেই আছে।", ephemeral=True)
 
 @bot.tree.command(name="setup_welcome", description="Welcome Setup")
 async def setup_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
@@ -130,10 +130,10 @@ async def antilink(interaction: discord.Interaction):
     status = "Enabled" if server_data["anti_link"]["enabled"] else "Disabled"
     await interaction.response.send_message(f"🛡️ Anti-Link: **{status}**", ephemeral=True)
 
-@bot.tree.command(name="blocklink", description="Block specific links")
+@bot.tree.command(name="blocklink", description="নির্দিষ্ট লিংক ব্লক করুন")
 async def blocklink(interaction: discord.Interaction, link: str):
     server_data["anti_link"]["blocked_list"].append(link.lower())
-    await interaction.response.send_message(f"✅ `{link}` Blocked।", ephemeral=True)
+    await interaction.response.send_message(f"✅ `{link}` ব্লক হয়েছে।", ephemeral=True)
 
 @bot.tree.command(name="clear", description="Clear messages")
 async def clear(interaction: discord.Interaction, amount: int):
@@ -155,7 +155,7 @@ async def on_message(message):
         if word in msg_content:
             try:
                 await message.delete()
-                await message.channel.send(f"🚫 {message.author.mention}, Abusing is prohibited.!", delete_after=5)
+                await message.channel.send(f"🚫 {message.author.mention}, গালি দেওয়া নিষেধ!", delete_after=5)
                 return 
             except: pass
 
@@ -165,7 +165,7 @@ async def on_message(message):
         if "http" in msg_content or "discord.gg" in msg_content:
             try:
                 await message.delete()
-                await message.channel.send(f"🚫 {message.author.mention}, Linking is prohibited.!", delete_after=5)
+                await message.channel.send(f"🚫 {message.author.mention}, লিংক দেওয়া নিষেধ!", delete_after=5)
                 return
             except: pass
             
@@ -173,182 +173,11 @@ async def on_message(message):
             if blocked in msg_content:
                 try:
                     await message.delete()
-                    await message.channel.send(f"🚫 Forbidden links!", delete_after=5)
+                    await message.channel.send(f"🚫 নিষিদ্ধ লিংক!", delete_after=5)
                     return
                 except: pass
 
     await bot.process_commands(message)
 
 bot.run(TOKEN)
-async def setup_welcome(interaction: discord.Interaction, channel: discord.TextChannel):
-    server_data["welcome"]["channel_id"] = channel.id
-    view = View(); btn = Button(label="Edit Content", style=discord.ButtonStyle.success)
-    async def cb(i): await i.response.send_modal(WelcomeSetupModal())
-    btn.callback = cb; view.add_item(btn)
-    await interaction.response.send_message(f"📍 Welcome channel: {channel.mention}", view=view, ephemeral=True)
-
-@bot.tree.command(name="setup_leave", description="Configure Leave system")
-@app_commands.checks.has_permissions(administrator=True)
-async def setup_leave(interaction: discord.Interaction, channel: discord.TextChannel):
-    server_data["leave"]["channel_id"] = channel.id
-    view = View(); btn = Button(label="Edit Content", style=discord.ButtonStyle.danger)
-    async def cb(i): await i.response.send_modal(LeaveSetupModal())
-    btn.callback = cb; view.add_item(btn)
-    await interaction.response.send_message(f"📍 Leave channel: {channel.mention}", view=view, ephemeral=True)
-
-@bot.tree.command(name="antilink", description="Enable/Disable Anti-Link")
-@app_commands.checks.has_permissions(administrator=True)
-async def antilink(interaction: discord.Interaction):
-    server_data["anti_link"]["enabled"] = not server_data["anti_link"]["enabled"]
-    status = "Enabled" if server_data["anti_link"]["enabled"] else "Disabled"
-    await interaction.response.send_message(f"🛡️ Anti-Link is now **{status}**", ephemeral=True)
-
-@bot.tree.command(name="lock", description="Lock this channel")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def lock(interaction: discord.Interaction):
-    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
-    embed = discord.Embed(description="🔒 **Channel Locked**", color=discord.Color.red())
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="unlock", description="Unlock this channel")
-@app_commands.checks.has_permissions(manage_channels=True)
-async def unlock(interaction: discord.Interaction):
-    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
-    embed = discord.Embed(description="🔓 **Channel Unlocked**", color=discord.Color.green())
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="clear", description="Clear messages")
-@app_commands.checks.has_permissions(manage_messages=True)
-async def clear(interaction: discord.Interaction, amount: int):
-    await interaction.response.defer(ephemeral=True)
-    deleted = await interaction.channel.purge(limit=amount)
-    await interaction.followup.send(f"🧹 Cleared {len(deleted)} messages.")
-
-# ================= AUTO-MODERATION LOGIC =================
-
-
-
-@bot.event
-async def on_message(message):
-    if message.author.bot: return
-
-    content = message.content.lower()
-
-    # 1. Bad Words Filter
-    for word in server_data["bad_words"]:
-        if word in content:
-            try:
-                await message.delete()
-                embed = discord.Embed(title="🚫 Restricted Content", description=f"{message.author.mention}, your message contained prohibited words.", color=discord.Color.red())
-                await message.channel.send(embed=embed, delete_after=5)
-                return 
-            except: pass
-
-    # 2. Anti-Link Filter
-    if server_data["anti_link"]["enabled"]:
-        if "http" in content or "discord.gg" in content or ".com" in content:
-            try:
-                await message.delete()
-                embed = discord.Embed(title="🚫 Link Blocked", description=f"{message.author.mention}, sending links is restricted here.", color=discord.Color.orange())
-                await message.channel.send(embed=embed, delete_after=5)
-                return
-            except: pass
-
-    await bot.process_commands(message)
-
-bot.run(TOKEN)
-@app_commands.checks.has_permissions(manage_channels=True)
-async def unlock(interaction: discord.Interaction):
-    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=True)
-    embed = discord.Embed(description="🔓 This channel has been **Unlocked**.", color=discord.Color.green())
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="clear", description="Delete a certain amount of messages")
-@app_commands.checks.has_permissions(manage_messages=True)
-async def clear(interaction: discord.Interaction, amount: int):
-    await interaction.response.defer(ephemeral=True)
-    deleted = await interaction.channel.purge(limit=amount)
-    embed = discord.Embed(description=f"🧹 Successfully cleared **{len(deleted)}** messages.", color=discord.Color.green())
-    await interaction.followup.send(embed=embed)
-
-# ================= SECURITY LOGIC (Unique Embed Warnings) =================
-
-@bot.event
-async def on_message(message):
-    if message.author.bot: return
-
-    msg_content = message.content.lower()
-
-    # 1. Bad Words Filter
-    for word in server_data["bad_words"]:
-        if word in msg_content:
-            try:
-                await message.delete()
-                embed = discord.Embed(
-                    title="🚫 Profanity Detected",
-                    description=f"{message.author.mention}, your message contained prohibited words.",
-                    color=discord.Color.from_rgb(255, 0, 0)
-                )
-                await message.channel.send(embed=embed, delete_after=5)
-                return 
-            except: pass
-
-    # 2. Anti-Link Filter
-    if server_data["anti_link"]["enabled"]:
-        is_link = "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content
-        if is_link:
-            try:
-                await message.delete()
-                embed = discord.Embed(
-                    title="🚫 Link Restricted",
-                    description=f"{message.author.mention}, you are not allowed to send links.",
-                    color=discord.Color.from_rgb(255, 87, 51)
-                )
-                await message.channel.send(embed=embed, delete_after=5)
-                return
-            except: pass
-
-    await bot.process_commands(message)
-
-bot.run(TOKEN)
-    await interaction.followup.send(embed=embed)
-
-# ================= SECURITY LOGIC (Embed Warnings) =================
-
-@bot.event
-async def on_message(message):
-    if message.author.bot: return
-
-    # 1. Bad Words Filter
-    msg_content = message.content.lower()
-    for word in server_data["bad_words"]:
-        if word in msg_content:
-            try:
-                await message.delete()
-                embed = discord.Embed(
-                    title="🚫 Profanity Detected",
-                    description=f"{message.author.mention}, your message contained prohibited words and has been removed.",
-                    color=discord.Color.red()
-                )
-                await message.channel.send(embed=embed, delete_after=5)
-                return 
-            except: pass
-
-    # 2. Anti-Link Filter
-    if server_data["anti_link"]["enabled"]:
-        is_link = "http" in msg_content or "discord.gg" in msg_content or ".com" in msg_content
-        if is_link:
-            try:
-                await message.delete()
-                embed = discord.Embed(
-                    title="🚫 Link Restricted",
-                    description=f"{message.author.mention}, sending links is not allowed in this server.",
-                    color=discord.Color.red()
-                )
-                await message.channel.send(embed=embed, delete_after=5)
-                return
-            except: pass
-
-    await bot.process_commands(message)
-
-bot.run(TOKEN)
+                                     
