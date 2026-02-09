@@ -30,7 +30,6 @@ server_data = {
         "color": 0xff0000
     }
 }
-
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -39,37 +38,39 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # বাটন ও ড্রপডাউন মেনু রেজিস্টার করা (Interaction Failed সমাধান)
+        # এই অংশটি বাটনগুলোকে বটের মেমোরিতে সেভ করে রাখে
         try:
             from cogs.ticket import TicketLaunch, TicketControl
+            # আমরা এখানে ভিউগুলোকে অ্যাড করছি যেন Interaction Failed না আসে
             self.add_view(TicketLaunch())
             self.add_view(TicketControl())
-            print("✅ Ticket Views & Dropdowns Registered")
+            print("✅ বাটন এবং ড্রপডাউন সচল হয়েছে (Views Registered)")
         except Exception as e:
-            print(f"⚠️ View Registration Error: {e}")
+            print(f"⚠️ ভিউ লোড করতে সমস্যা: {e}")
 
-        # Cogs লোড করা
+        # cogs ফোল্ডার থেকে ফাইল লোড করা
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
-                        print(f"✅ Loaded: {filename}")
+                        print(f"✅ Cog লোড হয়েছে: {filename}")
                     except Exception as e:
-                        print(f"❌ Error loading {filename}: {e}")
+                        print(f"❌ Cog লোড এরর {filename}: {e}")
         
+        # সব স্ল্যাশ কমান্ড সিঙ্ক করা
         try:
             await self.tree.sync()
-            print("✅ Slash Commands Synced")
+            print("✅ স্ল্যাশ কমান্ড সিঙ্ক হয়েছে")
         except Exception as e:
-            print(f"❌ Sync Error: {e}")
-            
+            print(f"❌ সিঙ্ক এরর: {e}")
+
 bot = MyBot()
 
 @bot.event
 async def on_ready():
-    print(f'🚀 {bot.user.name} is Online with All Features!')
-
+    print(f'🚀 {bot.user.name} এখন অনলাইন!')
+    
 # ================= WELCOME, LEAVE & AUTO-ROLE EVENTS =================
 
 @bot.event
