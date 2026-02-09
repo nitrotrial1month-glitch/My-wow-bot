@@ -39,33 +39,31 @@ class MyBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        # বাটন লজিক রেজিস্টার করা (Interaction Failed সমাধান)
+        # বাটন ও ড্রপডাউন মেনু রেজিস্টার করা (Interaction Failed সমাধান)
         try:
             from cogs.ticket import TicketLaunch, TicketControl
             self.add_view(TicketLaunch())
             self.add_view(TicketControl())
-            print("✅ Ticket Views Registered")
+            print("✅ Ticket Views & Dropdowns Registered")
         except Exception as e:
-            print(f"⚠️ View Error: {e}")
+            print(f"⚠️ View Registration Error: {e}")
 
-        # Cogs লোড করা (আপনার আগের কোডটি সঠিক স্পেস দিয়ে)
+        # Cogs লোড করা
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
-                        print(f"✅ Loaded extension: {filename}")
+                        print(f"✅ Loaded: {filename}")
                     except Exception as e:
-                        print(f"❌ Failed to load {filename}: {e}")
+                        print(f"❌ Error loading {filename}: {e}")
         
-        # কমান্ড সিঙ্ক করা
         try:
             await self.tree.sync()
             print("✅ Slash Commands Synced")
         except Exception as e:
             print(f"❌ Sync Error: {e}")
             
-
 bot = MyBot()
 
 @bot.event
