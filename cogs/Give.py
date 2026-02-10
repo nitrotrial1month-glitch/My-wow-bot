@@ -33,17 +33,14 @@ class ConfirmGive(discord.ui.View):
         sender_id = str(self.ctx.author.id)
         receiver_id = str(self.target.id)
 
-        # রি-ভ্যালিডেশন
         if data.get(sender_id, {}).get("balance", 0) < self.amount:
             return await interaction.response.edit_message(content="❌ Transaction failed! Insufficient funds.", embed=None, view=None)
 
-        # ট্রানজেকশন প্রসেস
         data[sender_id]["balance"] -= self.amount
         if receiver_id not in data: data[receiver_id] = {"balance": 0}
         data[receiver_id]["balance"] += self.amount
         save_data(data)
 
-        # কনফার্মড এমবেড (আপনার স্ক্রিনশট অনুযায়ী)
         embed = discord.Embed(color=0x2ecc71)
         embed.description = (
             f"━━━━━━━━━━━━━━━\n"
@@ -55,13 +52,12 @@ class ConfirmGive(discord.ui.View):
             f"━━━━━━━━━━━━━━━"
         )
         embed.set_footer(text=f"{self.ctx.author.name}, you have sent currency to {self.target.name}", icon_url=self.ctx.author.display_avatar.url)
-        
         header = f"💳 | @{self.ctx.author.name} **Sent {self.amount:,} currency** to @{self.target.name} (edited)"
         await interaction.response.edit_message(content=header, embed=embed, view=None)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="❌")
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ক্যানসেল এমবেড (আপনার স্ক্রিনশট অনুযায়ী)
+        # ক্যানসেল করার পর লাল এমবেড এবং সঠিক টেক্সট (স্ক্রিনশট অনুযায়ী)
         embed = discord.Embed(color=0xe74c3c)
         embed.description = (
             f"━━━━━━━━━━━━━━━\n"
@@ -73,7 +69,6 @@ class ConfirmGive(discord.ui.View):
             f"━━━━━━━━━━━━━━━"
         )
         embed.set_footer(text=f"{self.ctx.author.name}, you are about to give currency to {self.target.name}", icon_url=self.ctx.author.display_avatar.url)
-        
         await interaction.response.edit_message(content=None, embed=embed, view=None)
 
 class Give(commands.Cog):
@@ -82,32 +77,51 @@ class Give(commands.Cog):
 
     @commands.hybrid_command(name="give", description="Send currency to another user")
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def give(self, ctx, member: discord.User = None, amount: int = None):
-        # যদি ইউজার এবং এমাউন্ট দুটোই না থাকে
-        if member is None or amount is None:
+    async def give(self, ctx, *, args: str = None):
+        if not args:
             ctx.command.reset_cooldown(ctx)
-            return await ctx.send("❓ **Usage:** `Wow give @user 1000` or `Wow give 123456789 1000`", ephemeral=True)
+            return await ctx.send("❓ **Usage:** `Wow give @user 100` or `Wow give 100 @user`", ephemeral=True)
 
-        # নিজেকে টাকা পাঠানো যাবে না
-        if member.id == ctx.author.id:
+        # --- Flexible Argument Detection ---
+        target = None
+        amount = None
+
+        # ১. মেনশন বা আইডি খোঁজা (Regex)
+        mention_match = re.search(r'(\d{17,19})', args) # আইডি বা মেনশন থেকে নম্বর বের করা
+        if mention_match:
+            user_id = int(mention_match.group(1))
+            try:
+                target = ctx.guild.get_member(user_id) or await self.bot.fetch_user(user_id)
+            except:
+                target = None
+
+        # ২. এমাউন্ট খোঁজা (মেনশনের আইডি বাদে অন্য নম্বরগুলো)
+        numbers = re.findall(r'\d+', args.replace(',', ''))
+        for num in numbers:
+            n = int(num)
+            if target and n == target.id:
+                continue # এটি ইউজার আইডি, এমাউন্ট নয়
+            else:
+                amount = n
+                break
+
+        # ৩. ভ্যালিডেশন
+        if not target or amount is None:
+            ctx.command.reset_cooldown(ctx)
+            return await ctx.send("❌ Please provide a valid User and Amount! (e.g., `Wow give @user 100` or `Wow give 100 @user`)")
+
+        if target.id == ctx.author.id:
             ctx.command.reset_cooldown(ctx)
             return await ctx.send("❌ You cannot give money to yourself!")
-
-        # পজিটিভ এমাউন্ট চেক
-        if amount <= 0:
-            ctx.command.reset_cooldown(ctx)
-            return await ctx.send("❌ Amount must be greater than 0!")
 
         data = load_data()
         balance = data.get(str(ctx.author.id), {}).get("balance", 0)
 
-        # ব্যালেন্স চেক (আপনার স্ক্রিনশট ৪ অনুযায়ী)
         if balance < amount:
             return await ctx.send(f"❌ You don't have enough money! Balance: **{balance:,}**")
 
-        # ইনিশিয়াল ইউআই
-        header_text = f"💳 | @{ctx.author.name} is sending **{amount:,} currency** to @{member.name}"
-        
+        # --- UI Display ---
+        header_text = f"💳 | @{ctx.author.name} is sending **{amount:,} currency** to @{target.name}"
         embed = discord.Embed(color=0x2b2d31)
         embed.description = (
             f"━━━━━━━━━━━━━━━\n"
@@ -118,9 +132,9 @@ class Give(commands.Cog):
             f"To cancel the transaction, press ❌ **Cancel**.\n"
             f"━━━━━━━━━━━━━━━"
         )
-        embed.set_footer(text=f"{ctx.author.name}, you are about to give currency to {member.name}", icon_url=ctx.author.display_avatar.url)
+        embed.set_footer(text=f"{ctx.author.name}, you are about to give currency to {target.name}", icon_url=ctx.author.display_avatar.url)
 
-        view = ConfirmGive(ctx, member, amount)
+        view = ConfirmGive(ctx, target, amount)
         await ctx.send(content=header_text, embed=embed, view=view)
 
     @give.error
@@ -128,8 +142,7 @@ class Give(commands.Cog):
         if isinstance(error, commands.CommandOnCooldown):
             retry_after = f"{error.retry_after:.2f}"
             await ctx.send(f"**⏱ | {ctx.author.display_name}**! Slow down and try again in **{retry_after}s**", delete_after=5)
-        elif isinstance(error, commands.BadArgument) or isinstance(error, commands.UserNotFound):
-            await ctx.send("❌ Could not find that user! Make sure to provide a valid Name, ID, or Mention.")
 
 async def setup(bot):
     await bot.add_cog(Give(bot))
+    
