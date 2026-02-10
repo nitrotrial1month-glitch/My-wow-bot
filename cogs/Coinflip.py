@@ -6,6 +6,7 @@ import json
 import os
 import re
 
+# --- Global Database Path ---
 DB_FILE = 'economy.json'
 
 def load_json(filename):
@@ -29,82 +30,89 @@ class CoinFlip(commands.Cog):
 
     @commands.hybrid_command(name="cf", aliases=["coinflip", "flip"], description="Premium CoinFlip Game")
     async def coin_flip(self, ctx: commands.Context, *, args: str = None):
-        if not args:
-            return await ctx.send(f"❌ Usage: `Wow cf t 100` or `Wow cf all`", ephemeral=True)
+        if args is None:
+            return await ctx.send("❌ Usage: `Wow cf <h/t> <amount>` or `Wow cf <amount>`", ephemeral=True)
 
         user_id = str(ctx.author.id)
         data = load_json(DB_FILE)
 
         if user_id not in data:
-            data[user_id] = {"balance": 0}
+            data[user_id] = {"balance": 0, "streak": 0}
         
         balance = data[user_id]["balance"]
-        raw_input = args.lower()
+        raw_input = args.lower().strip()
 
-        # --- Side Detection (Heads or Tails) ---
-        user_choice = "tails" if 't' in raw_input else "heads"
+        # --- Side & Amount Detection Logic ---
+        user_choice = "heads" # Default side
+        bet_amount = 0
 
-        # --- Amount Detection Fix ---
-        bet = 0
-        if "all" in raw_input or "cap" in raw_input:
-            bet = balance
-        else:
-            # সংখ্যার সাথে 'k' বা কমা থাকলে তা হ্যান্ডেল করার জন্য
-            match = re.search(r'(\d+k|\d+)', raw_input.replace(',', ''))
-            if match:
-                val = match.group(1)
-                if 'k' in val:
-                    bet = int(val.replace('k', '')) * 1000
-                else:
-                    bet = int(val)
+        # স্পেস দিয়ে ইনপুট আলাদা করা (যেমন: ['t', '1000'] বা ['all'])
+        parts = raw_input.split()
+        
+        for part in parts:
+            if part in ['h', 'heads', 'head']:
+                user_choice = "heads"
+            elif part in ['t', 'tails', 'tail']:
+                user_choice = "tails"
+            elif part in ['all', 'max', 'cap']:
+                bet_amount = balance
+            else:
+                # সংখ্যা বা 'k' ডিটেক্ট করা
+                match = re.search(r'(\d+)(k)?', part)
+                if match:
+                    val = int(match.group(1))
+                    if match.group(2) == 'k':
+                        val *= 1000
+                    bet_amount = val
 
         # --- Validations ---
-        if bet <= 0: 
-            return await ctx.send(f"❌ Usage: `Wow cf t 100` or `Wow cf all`", ephemeral=True)
+        if bet_amount <= 0:
+            return await ctx.send(f"❌ সঠিক অ্যামাউন্ট লিখুন! উদাহরণ: `Wow cf t 100`", ephemeral=True)
         
         if balance <= 0:
-            return await ctx.send(f"❌ You have no money to bet!", ephemeral=True)
+            return await ctx.send(f"❌ আপনার একাউন্টে কোনো টাকা নেই!", ephemeral=True)
 
-        # Max limit check (আপনি চাইলে এটি সরাতে পারেন)
-        if bet > 250000: 
-            bet = 250000 
+        # ম্যাক্স বেট লিমিট চেক (২৫০,০০০)
+        actual_bet = min(bet_amount, 250000)
         
-        if bet > balance:
-            bet = balance # ব্যালেন্সের বেশি বেট ধরলে তা অটো ব্যালেন্সের সমান হয়ে যাবে
+        if actual_bet > balance:
+            return await ctx.send(f"❌ Low Balance! You have {self.emoji_cash} **{balance:,}**", ephemeral=True)
 
-        # --- Logic and UI ---
-        name = ctx.author.display_name
-        embed = discord.Embed(color=0x2b2d31)
+        # --- Phase 1: Animation Embed ---
+        embed = discord.Embed(color=0x2b2d31) 
         embed.description = (
-            f"**{name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
+            f"**{ctx.author.display_name}** spent {self.emoji_cash} **{actual_bet:,}** and chose **{user_choice.upper()}**\n\n"
             f"{self.emoji_spinning} **The coin spins...**"
         )
         msg = await ctx.send(embed=embed)
         
         await asyncio.sleep(2)
 
+        # --- Phase 2: Result Logic ---
         actual_result = random.choice(["heads", "tails"])
         is_win = (user_choice == actual_result)
         final_emoji = self.emoji_heads if actual_result == "heads" else self.emoji_tails
 
         if is_win:
-            data[user_id]["balance"] += bet
-            status = f"and **won** {self.emoji_cash} **{bet:,}**! 🎉"
-            embed.color = 0x2ecc71
+            data[user_id]["balance"] += actual_bet
+            status = f"and **won** {self.emoji_cash} **{actual_bet:,}**! 🎉"
+            embed.color = 0x2ecc71 
         else:
-            data[user_id]["balance"] -= bet
-            status = f"and **lost** it all... 💀"
-            embed.color = 0xe74c3c
+            data[user_id]["balance"] -= actual_bet
+            status = f"and **lost** it all... :("
+            embed.color = 0xe74c3c 
 
         save_json(DB_FILE, data)
 
+        # --- Phase 3: Final Result Embed ---
         embed.description = (
-            f"**{name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
+            f"**{ctx.author.display_name}** spent {self.emoji_cash} **{actual_bet:,}** and chose **{user_choice.upper()}**\n\n"
             f"{final_emoji} **The coin spins...** {status}"
         )
-        embed.set_footer(text=f"New Balance: {data[user_id]['balance']:,}")
+        embed.set_footer(text=f"New Balance: {data[user_id]['balance']:,} • Global Economy")
         
         await msg.edit(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(CoinFlip(bot))
+    
