@@ -106,7 +106,7 @@ class Slots(commands.Cog):
 
         embed.description = (
             f"**___ SLOTS ___**\n"
-            f"║ {' '.join(final_result)} ║  **{ctx.author.name}** bet {self.cash_emoji} **{bet:,}**\n"
+            f"║ {' '.join(final_result)} ║  **{ctx.author.display_name}** bet {self.cash_emoji} **{bet:,}**\n"
             f"╚═══════╝ {status}"
         )
         embed.set_footer(text=f"New Balance: {data[user_id]['balance']:,}")
