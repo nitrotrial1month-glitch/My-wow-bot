@@ -8,12 +8,17 @@ class Roleplay(commands.Cog):
         
         # --- GIF Links for Each Action ---
         self.kiss_gifs = [
-            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
-            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
-            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
-            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
-            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
             "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif"
+            "https://media.tenor.com/v1/7f3e8b0a1a0c0e0f0a0c0e0f0a0c0e0f/tenor.gif", # kiss-gif-10706163...
+            "https://media.tenor.com/mO2S78N-I0MAAAAC/kiss-kisses.gif",
+            "https://media.tenor.com/Onf_9R2p04QAAAAC/kiss-anime.gif",
+            "https://media.tenor.com/m44r0mN7R-MAAAAC/anime-kiss.gif",
+            "https://media.tenor.com/YmK7Mv3e0OAAAAAC/anime-couple-kiss.gif",
+            "https://media.tenor.com/Onf_9R2p04QAAAAC/kiss-anime.gif",
+            "https://media.tenor.com/8mR6B5U_B_cAAAAC/kiss-anime-couple.gif",
+            "https://media.tenor.com/S-K-H-Xm_mMAAAAC/kiss-anime.gif",
+            "https://media.tenor.com/v8t_P_hR_pAAAAAC/anime-cry-kiss.gif",
+            "https://media.tenor.com/v1/76d6f6e696c73206c6f766520676966/tenor.gif" 
         ]
         self.kill_gifs = [
             "https://media.giphy.com/media/3o7qDDfL1h8n39hCco/giphy.gif",
