@@ -61,7 +61,7 @@ class CoinFlip(commands.Cog):
         # এখন মেসেজটি বাইরে নয়, এমবেডের description-এর ভেতরে থাকবে
         embed = discord.Embed(color=0x2b2d31) # Dark Gray Theme
         embed.description = (
-            f"🪙 | **{ctx.author.name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
+            f"**{ctx.author.display_name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
             f"{self.emoji_spinning} **The coin spins...**"
         )
         msg = await ctx.send(embed=embed)
@@ -75,18 +75,18 @@ class CoinFlip(commands.Cog):
 
         if is_win:
             data[user_id]["balance"] += bet
-            status = f"and **won** {self.emoji_cash} **{bet:,}**! 🎉"
+            status = f"and **won** {self.emoji_cash} **{bet:,}**!🎉"
             embed.color = 0x2ecc71 # Win Green
         else:
             data[user_id]["balance"] -= bet
-            status = f"and **lost** it all... 💀"
+            status = f"and **lost** it all... :("
             embed.color = 0xe74c3c # Loss Red
 
         save_json(DB_FILE, data)
 
         # --- Phase 3: Final Result Embed ---
         embed.description = (
-            f"🪙 | **{ctx.author.name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
+            f"**{ctx.author.display_name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
             f"{final_emoji} **The coin spins...** {status}"
         )
         embed.set_footer(text=f"New Balance: {data[user_id]['balance']:,} • Global Economy")
