@@ -1,0 +1,49 @@
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+class Banner(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.hybrid_command(
+        name="banner", 
+        aliases=["bn"], 
+        description="ইউজার বা নিজের প্রোফাইল ব্যানার দেখুন"
+    )
+    @app_commands.describe(member="যার ব্যানার দেখতে চান তাকে সিলেক্ট করুন")
+    async def banner(self, ctx, member: discord.Member = None):
+        # যদি কেউ মেনশন না করে তবে নিজের ব্যানার দেখাবে
+        member = member or ctx.author
+        
+        # ব্যানার ডাটা পাওয়ার জন্য ইউজারকে ফেচ করা প্রয়োজন
+        user = await self.bot.fetch_user(member.id)
+        
+        if not user.banner:
+            return await ctx.send(f"❌ **{member.display_name}**-এর কোনো প্রোফাইল ব্যানার নেই।", ephemeral=True)
+
+        # এমবেড ডিজাইন
+        embed = discord.Embed(
+            title=f"🖼️ {member.display_name}'s Banner",
+            color=0x2b2d31
+        )
+        
+        # ব্যানারের ইউআরএল সেট করা
+        banner_url = user.banner.url
+        embed.set_image(url=banner_url)
+        
+        # ডাউনলোড লিঙ্কগুলো
+        embed.description = f"[PNG]({user.banner.with_format('png')}) | [JPG]({user.banner.with_format('jpg')}) | [WebP]({user.banner.with_format('webp')})"
+        
+        # আপনার সেই অ্যারো ইমোজিটি ফুটারে ব্যবহার করা হয়েছে
+        animated_arrow = "<a:arrow:1468223732546932910>"
+        embed.set_footer(
+            text=f"Requested by {ctx.author.name}", 
+            icon_url=ctx.author.display_avatar.url
+        )
+        
+        await ctx.send(embed=embed)
+
+async def setup(bot):
+    await bot.add_cog(Banner(bot))
+
