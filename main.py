@@ -12,9 +12,9 @@ def get_prefix(bot, message):
     try:
         with open('prefixes.json', 'r') as f:
             prefixes = json.load(f)
-        return prefixes.get(str(message.guild.id), "!") # ডিফল্ট !
+        return prefixes.get(str(message.guild.id), "Wow") # ডিফল্ট !
     except:
-        return "!"
+        return "Wow"
 
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
