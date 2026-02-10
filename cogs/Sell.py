@@ -33,31 +33,27 @@ class SellSystem(commands.Cog):
             "Legendary": {"list": ["🐉", "🐲", "🦁", "🦅", "🐆", "🦈", "🦍", "🦣", "🦦", "🦥"], "price": 25000, "short": "l"}
         }
 
-    # Aliases থেকে 's' সরিয়ে 'sl' যোগ করা হয়েছে
-    @commands.hybrid_command(name="sell", aliases=["Sell", "sl", "SL"], description="Sell animals for global cash!")
+    @commands.hybrid_command(name="sell", aliases=["sl", "Sell", "SL"], description="Sell animals for global cash!")
     async def sell(self, ctx, item: str = None, amount: str = "1"):
         if not item:
-            return await ctx.send("❓ **Usage:**\n`!sell all` - Sell all animals\n`!sl c` - Sell all Common\n`!sl 🐱 5` - Sell 5 Cats", ephemeral=True)
+            return await ctx.send("❓ **How to sell?**\n`!sl all` - Sell all animals\n`!sl l` - Sell all Legendary\n`!sl 🐱 5` - Sell 5 Cats", ephemeral=True)
 
         user_id = str(ctx.author.id)
         data = load_json()
         
-        if user_id not in data:
-            return await ctx.send("❌ You don't have any data in the system!", ephemeral=True)
-
-        user_data = data[user_id]
-        inventory = user_data.get("inventory", {})
-        
-        if not inventory:
+        if user_id not in data or "inventory" not in data[user_id]:
             return await ctx.send("❌ Your zoo is empty!", ephemeral=True)
 
+        user_data = data[user_id]
+        inventory = user_data["inventory"]
+        
         total_earned = 0
         sold_count = 0
         item_lower = item.lower()
 
-        # --- Case 1: Sell All ---
+        # --- ১. Sell All Logic ---
         if item_lower == "all":
-            for cat, info in self.categories.items():
+            for cat_name, info in self.categories.items():
                 for animal in info["list"]:
                     count = inventory.get(animal, 0)
                     if count > 0:
@@ -65,36 +61,36 @@ class SellSystem(commands.Cog):
                         sold_count += count
                         inventory[animal] = 0
 
-        # --- Case 2: Sell by Category Short-name (c, u, r, e, l) ---
+        # --- ২. Sell by Category Short Name (c, u, r, e, l) ---
         elif any(item_lower == info["short"] for info in self.categories.values()):
-            for cat, info in self.categories.items():
+            # কোন ক্যাটাগরি সেটা খুঁজে বের করা
+            selected_info = None
+            for info in self.categories.values():
                 if item_lower == info["short"]:
-                    for animal in info["list"]:
-                        count = inventory.get(animal, 0)
-                        if count > 0:
-                            total_earned += count * info["price"]
-                            sold_count += count
-                            inventory[animal] = 0
+                    selected_info = info
+                    break
+            
+            if selected_info:
+                for animal in selected_info["list"]:
+                    count = inventory.get(animal, 0)
+                    if count > 0:
+                        total_earned += count * selected_info["price"]
+                        sold_count += count
+                        inventory[animal] = 0
 
-        # --- Case 3: Sell Specific Animal (Emoji) ---
+        # --- ৩. Sell Specific Animal (Emoji) ---
         else:
             animal_to_sell = item
             if animal_to_sell not in inventory or inventory[animal_to_sell] <= 0:
-                return await ctx.send(f"❌ You don't have any {animal_to_sell}!", ephemeral=True)
+                return await ctx.send(f"❌ You don't have any {animal_to_sell} in your zoo!", ephemeral=True)
 
             current_stock = inventory[animal_to_sell]
-            
-            if amount.lower() == "all":
-                num_to_sell = current_stock
-            else:
-                try:
-                    num_to_sell = int(amount)
-                except ValueError:
-                    return await ctx.send("❌ Amount must be a number or 'all'!", ephemeral=True)
+            num_to_sell = current_stock if amount.lower() == "all" else int(amount)
 
             if num_to_sell > current_stock:
-                return await ctx.send(f"❌ You only have {current_stock} of {animal_to_sell}!", ephemeral=True)
+                return await ctx.send(f"❌ You only have {current_stock} {animal_to_sell}!", ephemeral=True)
 
+            # দাম খুঁজে বের করা
             price = 0
             for info in self.categories.values():
                 if animal_to_sell in info["list"]:
@@ -105,21 +101,23 @@ class SellSystem(commands.Cog):
             sold_count = num_to_sell
             inventory[animal_to_sell] -= num_to_sell
 
+        # --- ডাটা সেভ এবং রেসপন্স ---
         if total_earned > 0:
             user_data["balance"] = user_data.get("balance", 0) + total_earned
             user_data["inventory"] = inventory
             save_json(data)
 
             embed = discord.Embed(
-                title="💰 Transaction Successful",
-                description=f"Sold **{sold_count:,}** animals for **{total_earned:,}** {self.cash_emoji}",
+                title="💰 Global Sale Success!",
+                description=f"You successfully sold **{sold_count:,}** animals.",
                 color=0x2ecc71
             )
-            embed.set_footer(text=f"New Balance: {user_data['balance']:,}")
+            embed.add_field(name="Total Revenue", value=f"{self.cash_emoji} **{total_earned:,}**", inline=True)
+            embed.add_field(name="New Balance", value=f"**{user_data['balance']:,}**", inline=True)
+            embed.set_footer(text=f"Economy System • {ctx.author.name}")
             await ctx.send(embed=embed)
         else:
-            await ctx.send("❌ No matching animals found!", ephemeral=True)
+            await ctx.send("❌ No matching animals found to sell!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(SellSystem(bot))
-    
