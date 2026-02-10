@@ -45,8 +45,13 @@ class MyBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True 
-        # এখানে command_prefix এ আমাদের ফাংশনটি দিয়ে দিলাম
-        super().__init__(command_prefix=get_prefix, intents=intents)
+        
+        # এখানে 'strip_after_prefix=True' যোগ করা হয়েছে
+        super().__init__(
+            command_prefix=get_prefix, 
+            intents=intents,
+            strip_after_prefix=True  # এটি স্পেস ইগনোর করে কমান্ড ডিটেক্ট করবে
+        )
         
     async def setup_hook(self):
         # বাটনগুলো মেমোরিতে সেভ করা (যাতে Interaction Failed না আসে)
@@ -72,10 +77,12 @@ class MyBot(commands.Bot):
         await self.tree.sync()
     
 bot = MyBot()
-
 @bot.event
-async def on_ready():
-    print(f'🚀 {bot.user.name} এখন অনলাইন!')
+async def on_message(message):
+    if message.author.bot: return
+    # এটি ছাড়া প্রিফিক্স কমান্ড কাজ করবে না
+    await bot.process_commands(message) 
+
     
 # ================= WELCOME, LEAVE & AUTO-ROLE EVENTS =================
 
