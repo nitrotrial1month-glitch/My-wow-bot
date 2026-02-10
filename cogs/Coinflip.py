@@ -39,7 +39,7 @@ class CoinFlip(commands.Cog):
         balance = data[user_id]["balance"]
         raw_input = args.lower().replace(',', '')
 
-        # --- Side Detection (Default is Heads) ---
+        # --- Side Detection ---
         user_choice = "tails" if 't' in raw_input else "heads"
 
         # --- Amount Detection ---
@@ -57,9 +57,14 @@ class CoinFlip(commands.Cog):
         if bet > 250000: return await ctx.send("🚫 Max bet limit is **250,000**.", ephemeral=True)
         if bet > balance: return await ctx.send(f"❌ Low Balance! You have {self.emoji_cash} **{balance:,}**", ephemeral=True)
 
-        # --- Phase 1: Animation ---
-        # OwO এর মতো সরাসরি টেক্সট দিয়ে শুরু হবে
-        msg = await ctx.send(f"🪙 | **{ctx.author.name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n{self.emoji_spinning} The coin spins...")
+        # --- Phase 1: Animation Embed ---
+        # এখন মেসেজটি বাইরে নয়, এমবেডের description-এর ভেতরে থাকবে
+        embed = discord.Embed(color=0x2b2d31) # Dark Gray Theme
+        embed.description = (
+            f"🪙 | **{ctx.author.name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
+            f"{self.emoji_spinning} **The coin spins...**"
+        )
+        msg = await ctx.send(embed=embed)
         
         await asyncio.sleep(2)
 
@@ -71,23 +76,23 @@ class CoinFlip(commands.Cog):
         if is_win:
             data[user_id]["balance"] += bet
             status = f"and **won** {self.emoji_cash} **{bet:,}**! 🎉"
-            embed_color = 0x2ecc71 # Green
+            embed.color = 0x2ecc71 # Win Green
         else:
             data[user_id]["balance"] -= bet
             status = f"and **lost** it all... 💀"
-            embed_color = 0xe74c3c # Red
+            embed.color = 0xe74c3c # Loss Red
 
         save_json(DB_FILE, data)
 
-        # --- Phase 3: Premium Embed Display ---
-        embed = discord.Embed(
-            description=f"🪙 | **{ctx.author.name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\nThe coin spins... {final_emoji} {status}",
-            color=embed_color
+        # --- Phase 3: Final Result Embed ---
+        embed.description = (
+            f"🪙 | **{ctx.author.name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
+            f"{final_emoji} **The coin spins...** {status}"
         )
         embed.set_footer(text=f"New Balance: {data[user_id]['balance']:,} • Global Economy")
         
-        # মেসেজটি এডিট করে এমবেড দেখানো হবে
-        await msg.edit(content=None, embed=embed)
+        await msg.edit(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(CoinFlip(bot))
+    
