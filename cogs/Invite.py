@@ -5,9 +5,8 @@ import json
 import os
 
 INVITE_DB = 'invites.json'
-MEMBER_MAP = 'member_map.json' # কে কার মাধ্যমে জয়েন করেছে তা সেভ রাখার জন্য
+MEMBER_MAP = 'member_map.json'
 
-# --- ডাটাবেজ ফাংশন ---
 def load_data(file):
     if os.path.exists(file):
         with open(file, 'r') as f: return json.load(f)
@@ -23,13 +22,11 @@ class Invites(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # বট অন হলে সব ইনভাইট ক্যাশ করা
         for guild in self.bot.guilds:
             try:
                 self.invites_cache[guild.id] = await guild.invites()
             except: pass
 
-    # --- ইনভাইট ট্র্যাকিং লজিক ---
     @commands.Cog.listener()
     async def on_member_join(self, member):
         invites_before = self.invites_cache.get(member.guild.id)
@@ -38,7 +35,6 @@ class Invites(commands.Cog):
         for invite in invites_before:
             for new_invite in invites_after:
                 if invite.code == new_invite.code and new_invite.uses > invite.uses:
-                    # ১. ইনভাইটার ডাটা আপডেট
                     data = load_data(INVITE_DB)
                     gid, inviter_id = str(member.guild.id), str(invite.inviter.id)
                     
@@ -49,7 +45,6 @@ class Invites(commands.Cog):
                     data[gid][inviter_id]["total"] += 1
                     save_data(INVITE_DB, data)
                     
-                    # ২. মেম্বার ম্যাপিং (লিভ ট্র্যাকিংয়ের জন্য জরুরি)
                     mapping = load_data(MEMBER_MAP)
                     if gid not in mapping: mapping[gid] = {}
                     mapping[gid][str(member.id)] = inviter_id
@@ -60,30 +55,17 @@ class Invites(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
-        # কেউ লিভ নিলে তাকে কে ইনভাইট করেছিল তা খুঁজে বের করা
         mapping = load_data(MEMBER_MAP)
-        gid = str(member.guild.id)
-        mid = str(member.id)
+        gid, mid = str(member.guild.id), str(member.id)
         
         if gid in mapping and mid in mapping[gid]:
             inviter_id = mapping[gid][mid]
             data = load_data(INVITE_DB)
-            
             if gid in data and inviter_id in data[gid]:
                 data[gid][inviter_id]["left"] += 1
                 save_data(INVITE_DB, data)
-                
-                # লিস্ট থেকে মেম্বারকে রিমুভ করা
-                del mapping[gid][mid]
-                save_data(MEMBER_MAP, mapping)
 
-    # --- কমান্ড সেকশন (Wow i / Wow invites / Slash) ---
-    @commands.hybrid_command(
-        name="invites", 
-        aliases=["i", "inv"], 
-        description="Check detailed and valid invite statistics"
-    )
-    @app_commands.describe(member="Select a member to check their invites")
+    @commands.hybrid_command(name="invites", aliases=["i", "inv"], description="Advanced Invite Tracker")
     async def invite_check(self, ctx, member: discord.Member = None):
         member = member or ctx.author
         data = load_data(INVITE_DB)
@@ -91,27 +73,32 @@ class Invites(commands.Cog):
         
         stats = data.get(gid, {}).get(uid, {"total": 0, "left": 0, "fake": 0, "bonus": 0})
         
-        # ক্যালকুলেশন
-        total = stats["total"]
+        total = stats["total"] + stats["bonus"]
         left = stats["left"]
         fake = stats["fake"]
         bonus = stats["bonus"]
-        valid = (total - left - fake) + bonus
+        valid = (stats["total"] - left - fake) + bonus
         if valid < 0: valid = 0
 
+        # ডিজাইন অনুযায়ী এমবেড তৈরি
         embed = discord.Embed(
-            title=f"📊 Invite Stats: {member.display_name}",
-            color=0x00ffcc,
-            description=f"Invite information for {member.mention}"
+            title=f"📩 {member.display_name}'s Invites — {total}", # নামের পাশে টোটাল ইনভাইট
+            color=0x2b2d31
         )
         embed.set_thumbnail(url=member.display_avatar.url)
         
-        # তথ্যগুলো সাজানো
-        embed.add_field(name="✨ Valid Invites", value=f"**` {valid} `**", inline=False)
-        embed.add_field(name="📩 Total Joins", value=f"`{total}`", inline=True)
-        embed.add_field(name="🏃 Left Members", value=f"`{left}`", inline=True)
-        embed.add_field(name="🚫 Fake/Bots", value=f"`{fake}`", inline=True)
+        # মাঝখানের তথ্যগুলো
+        embed.add_field(name="📥 Joins", value=f"`{stats['total']}`", inline=True)
+        embed.add_field(name="📤 Left", value=f"`{left}`", inline=True)
+        embed.add_field(name="🚫 Fake", value=f"`{fake}`", inline=True)
         embed.add_field(name="🎁 Bonus", value=f"`{bonus}`", inline=True)
+        
+        # ইউজারের রিজিয়ন (অ্যাকাউন্ট ইনফো থেকে আইডিয়া পাওয়া যায়)
+        region = "Global" # ডিসকোর্ড এপিআই সরাসরি রিজিয়ন দেয় না, তাই এটি ডিফল্ট রাখা হয়েছে
+        embed.add_field(name="🌍 Region", value=f"`{region}`", inline=True)
+        
+        # ভ্যালিড ইনভাইট সবার নিচে বড় করে
+        embed.add_field(name="━━━━━━━━━━━━━━━━━━", value=f"✨ **Valid Invites:** `{valid}`", inline=False)
         
         embed.set_footer(text=f"Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
         
