@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord import app_commands # স্ল্যাশ কমান্ডের জন্য
+from discord import app_commands
 import json
 import os
 
@@ -17,47 +17,52 @@ def save_invites(data):
 class Invites(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.invites_cache = {}
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        # বট চালু হলে ইনভাইটগুলো ক্যাশ করে রাখা
-        for guild in self.bot.guilds:
-            try:
-                self.invites_cache[guild.id] = await guild.invites()
-            except: pass
-
-    # --- Hybrid Command: এটি টেক্সট (Wow i) এবং স্ল্যাশ (/) দুইভাবেই কাজ করবে ---
     @commands.hybrid_command(
         name="invites", 
-        aliases=["i", "invite"], # এখানে 'i' যোগ করা হয়েছে যাতে 'Wow i' কাজ করে
-        description="Check detailed invite statistics (Slash command supported)"
+        aliases=["i", "invite"], 
+        description="Check detailed and valid invite statistics"
     )
-    @app_commands.describe(member="The member whose invites you want to check")
     async def invite_check(self, ctx, member: discord.Member = None):
         member = member or ctx.author
         data = load_invites()
         gid, uid = str(ctx.guild.id), str(member.id)
         
+        # ডাটাবেজ থেকে তথ্য নেওয়া
         stats = data.get(gid, {}).get(uid, {"total": 0, "left": 0, "fake": 0, "bonus": 0})
         
-        # ক্যালকুলেশন
-        regular = stats["total"] - stats["left"]
-        total = stats["total"] + stats["bonus"]
+        # ক্যালকুলেশন (Valid = Total - Left - Fake + Bonus)
+        total_joins = stats["total"]
+        left_members = stats["left"]
+        fake_invites = stats["fake"]
+        bonus_invites = stats["bonus"]
         
+        # ভ্যালিড ইনভাইট বের করার আসল সূত্র
+        valid_invites = (total_joins - left_members - fake_invites) + bonus_invites
+        if valid_invites < 0: valid_invites = 0 # যেন মাইনাস না দেখায়
+
         embed = discord.Embed(
             title=f"📊 Invite Stats: {member.display_name}",
-            color=0x00ffcc,
-            description=f"Detailed tracking for {member.mention}"
+            color=0x2f3136, # প্রিমিয়াম ডার্ক কালার
+            description=f"Showing invite analytics for {member.mention}"
         )
         embed.set_thumbnail(url=member.display_avatar.url)
         
-        # তথ্যগুলো সাজানো
-        embed.add_field(name="📩 Total", value=f"`{total}`", inline=True)
-        embed.add_field(name="✅ Regular", value=f"`{regular}`", inline=True)
-        embed.add_field(name="🏃 Left", value=f"`{stats['left']}`", inline=True)
-        embed.add_field(name="🚫 Fake", value=f"`{stats['fake']}`", inline=True)
-        embed.add_field(name="🎁 Bonus", value=f"`{stats['bonus']}`", inline=True)
+        # মূল ভ্যালিড ইনভাইট সবার উপরে বড় করে দেখানো
+        embed.add_field(name="✨ Valid Invites", value=f"**` {valid_invites} `**", inline=False)
+        
+        # অন্যান্য ডিটেইলস
+        embed.add_field(name="📩 Total Joins", value=f"`{total_joins}`", inline=True)
+        embed.add_field(name="🏃 Left", value=f"`{left_members}`", inline=True)
+        embed.add_field(name="🚫 Fake", value=f"`{fake_invites}`", inline=True)
+        embed.add_field(name="🎁 Bonus", value=f"`{bonus_invites}`", inline=True)
+        
+        # ড্যাশবোর্ড স্টাইল স্ট্যাটাস লাইন
+        embed.add_field(
+            name="📝 Summary", 
+            value=f"You currently have **{valid_invites}** active invites on this server.", 
+            inline=False
+        )
         
         embed.set_footer(text=f"Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
         
