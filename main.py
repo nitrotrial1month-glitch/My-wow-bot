@@ -8,19 +8,22 @@ import datetime
 import json
 import os
 
-# প্রিফিক্স ডাটাবেস লোড করার ফাংশন
 def get_prefix(bot, message):
-    if not os.path.exists('prefixes.json'):
-        with open('prefixes.json', 'w') as f:
-            json.dump({}, f)
-            
-    with open('prefixes.json', 'r') as f:
-        prefixes = json.load(f)
-    
-    return prefixes.get(str(message.guild.id), "!") # ডিফল্ট প্রিফিক্স !
+    try:
+        with open('prefixes.json', 'r') as f:
+            prefixes = json.load(f)
+        return prefixes.get(str(message.guild.id), "!") # ডিফল্ট !
+    except:
+        return "!"
 
-# বটের শুরুতে এটি ব্যবহার করুন
-bot = MyBot(command_prefix=get_prefix, intents=intents)
+class MyBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True 
+        # এখানে command_prefix এ আমাদের ফাংশনটি দিয়ে দিলাম
+        super().__init__(command_prefix=get_prefix, intents=intents)
+        
 
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
