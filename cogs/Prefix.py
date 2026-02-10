@@ -2,29 +2,35 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import json
+import os
 
 class PrefixSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="set_prefix", description="Change the bot's prefix for this server")
-    @app_commands.describe(new_prefix="The new prefix (e.g. ?, ., $)")
+    @app_commands.command(name="set_prefix", description="Set a custom prefix for this server")
     @app_commands.checks.has_permissions(administrator=True)
     async def set_prefix(self, interaction: discord.Interaction, new_prefix: str):
-        if len(new_prefix) > 5:
-            return await interaction.response.send_message("❌ Prefix is too long! Keep it under 5 characters.", ephemeral=True)
+        # ১. ফাইলটি আছে কি না চেক করা
+        if not os.path.exists('prefixes.json'):
+            with open('prefixes.json', 'w') as f:
+                json.dump({}, f)
 
-        # JSON ফাইলে প্রিফিক্স সেভ করা
+        # ২. বর্তমান ডাটা পড়া
         with open('prefixes.json', 'r') as f:
-            prefixes = json.load(f)
+            try:
+                prefixes = json.load(f)
+            except json.JSONDecodeError:
+                prefixes = {}
 
+        # ৩. নতুন প্রিফিক্স সেট করা
         prefixes[str(interaction.guild.id)] = new_prefix
 
+        # ৪. ফাইল সেভ করা
         with open('prefixes.json', 'w') as f:
             json.dump(prefixes, f, indent=4)
 
-        await interaction.response.send_message(f"✅ Prefix has been changed to: `{new_prefix}`")
+        await interaction.response.send_message(f"✅ Prefix successfully updated to: `{new_prefix}`", ephemeral=False)
 
 async def setup(bot):
     await bot.add_cog(PrefixSystem(bot))
-  
