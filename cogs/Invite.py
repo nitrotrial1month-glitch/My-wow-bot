@@ -66,7 +66,7 @@ class Invites(commands.Cog):
         # আপাতত আমরা বেসিক 'left' ট্র্যাকিং করছি
         pass 
 
-    @commands.hybrid_command(name="invites", aliases=["i", "inv"], description="Detailed invite tracking")
+    @commands.hybrid_command(name="invites", aliases=["i", "invite"], description="Detailed invite tracking")
     async def invite_check(self, ctx, member: discord.Member = None):
         member = member or ctx.author
         data = load_invites()
