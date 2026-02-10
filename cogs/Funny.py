@@ -8,7 +8,7 @@ class Roleplay(commands.Cog):
         
         # --- GIF Links for Each Action ---
         self.kiss_gifs = [
-            "https://media.giphy.com/media/Mb1E6mR5i79V8NlB8y/giphy.gif",
+            "https://giphy.com/gifs/kiss-anime-love-jR22gdcPiOLaE",
             "https://media.giphy.com/media/TxVcfKxJgB1y5lQe7c/giphy.gif",
             "https://media.giphy.com/media/wMylz2uSpsVcA/giphy.gif",
             "https://media.giphy.com/media/oHZ4uXl5gGg2e/giphy.gif",
