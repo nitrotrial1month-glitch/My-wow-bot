@@ -5,6 +5,22 @@ from discord.ext import commands
 from discord.ui import View, Button, Modal, TextInput
 from typing import Optional
 import datetime
+import json
+import os
+
+# প্রিফিক্স ডাটাবেস লোড করার ফাংশন
+def get_prefix(bot, message):
+    if not os.path.exists('prefixes.json'):
+        with open('prefixes.json', 'w') as f:
+            json.dump({}, f)
+            
+    with open('prefixes.json', 'r') as f:
+        prefixes = json.load(f)
+    
+    return prefixes.get(str(message.guild.id), "!") # ডিফল্ট প্রিফিক্স !
+
+# বটের শুরুতে এটি ব্যবহার করুন
+bot = MyBot(command_prefix=get_prefix, intents=intents)
 
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
