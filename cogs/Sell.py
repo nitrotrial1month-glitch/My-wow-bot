@@ -30,10 +30,13 @@ class SellSystem(commands.Cog):
             "Legendary": {"list": ["🐉", "🐲", "🦁", "🦅", "豹", "🦈", "🦍", "🦣", "🦦", "🦥"], "price": 25000, "short": "l"}
         }
 
-    # এখানে aliases থেকে 's', 'S' পুরোপুরি সরিয়ে দেওয়া হয়েছে।
-    # এখন শুধু !sell বা !sl লিখলে এটি কাজ করবে।
-    @commands.hybrid_command(name="sell", aliases=["sl", "Sell", "SL"], description="Sell animals for cash!")
+    @commands.hybrid_command(
+        name="sell", 
+        aliases=["Sell"], 
+        description="Sell caught animals for premium cash!"
+    )
     async def sell(self, ctx, item: str = None, amount: str = "1"):
+        # বাকি লজিক আগের মতোই থাকবে...
         if not item:
             return await ctx.send("❓ **Usage:**\n`Wow sl all` - Sell all\n`Wow sl c` - Sell Common\n`Wow sl 🐱 5` - Sell 5 Cats", ephemeral=True)
 
