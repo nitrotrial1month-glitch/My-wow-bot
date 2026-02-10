@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import os
+from datetime import datetime, timezone
 
 INVITE_DB = 'invites.json'
 MEMBER_MAP = 'member_map.json'
@@ -36,20 +37,29 @@ class Invites(commands.Cog):
             for new_invite in invites_after:
                 if invite.code == new_invite.code and new_invite.uses > invite.uses:
                     data = load_data(INVITE_DB)
+                    mapping = load_data(MEMBER_MAP)
                     gid, inviter_id = str(member.guild.id), str(invite.inviter.id)
+                    mid = str(member.id)
                     
                     if gid not in data: data[gid] = {}
                     if inviter_id not in data[gid]:
-                        data[gid][inviter_id] = {"total": 0, "left": 0, "fake": 0, "bonus": 0}
+                        data[gid][inviter_id] = {"total": 0, "left": 0, "fake": 0, "bonus": 0, "rejoin": 0}
                     
-                    data[gid][inviter_id]["total"] += 1
+                    # Rejoin Check
+                    if gid in mapping and mid in mapping[gid]:
+                        data[gid][inviter_id]["rejoin"] += 1
+                    else:
+                        # Fake Check (Account younger than 7 days)
+                        diff = datetime.now(timezone.utc) - member.created_at
+                        if diff.days < 7:
+                            data[gid][inviter_id]["fake"] += 1
+                        
+                        data[gid][inviter_id]["total"] += 1
+                        if gid not in mapping: mapping[gid] = {}
+                        mapping[gid][mid] = inviter_id
+                    
                     save_data(INVITE_DB, data)
-                    
-                    mapping = load_data(MEMBER_MAP)
-                    if gid not in mapping: mapping[gid] = {}
-                    mapping[gid][str(member.id)] = inviter_id
                     save_data(MEMBER_MAP, mapping)
-                    
                     self.invites_cache[member.guild.id] = invites_after
                     return
 
@@ -57,7 +67,6 @@ class Invites(commands.Cog):
     async def on_member_remove(self, member):
         mapping = load_data(MEMBER_MAP)
         gid, mid = str(member.guild.id), str(member.id)
-        
         if gid in mapping and mid in mapping[gid]:
             inviter_id = mapping[gid][mid]
             data = load_data(INVITE_DB)
@@ -65,42 +74,47 @@ class Invites(commands.Cog):
                 data[gid][inviter_id]["left"] += 1
                 save_data(INVITE_DB, data)
 
-    @commands.hybrid_command(name="invites", aliases=["i", "inv"], description="Advanced Invite Tracker")
+    @commands.hybrid_command(name="invites", aliases=["i", "inv"], description="Detailed Invite Analytics")
     async def invite_check(self, ctx, member: discord.Member = None):
         member = member or ctx.author
         data = load_data(INVITE_DB)
         gid, uid = str(ctx.guild.id), str(member.id)
         
-        stats = data.get(gid, {}).get(uid, {"total": 0, "left": 0, "fake": 0, "bonus": 0})
+        stats = data.get(gid, {}).get(uid, {"total": 0, "left": 0, "fake": 0, "bonus": 0, "rejoin": 0})
         
         total = stats["total"] + stats["bonus"]
         left = stats["left"]
         fake = stats["fake"]
         bonus = stats["bonus"]
+        rejoin = stats["rejoin"]
         valid = (stats["total"] - left - fake) + bonus
         if valid < 0: valid = 0
 
-        # ডিজাইন অনুযায়ী এমবেড তৈরি
+        # আপনার দেওয়া ইমোজিগুলো এখানে সেট করা হয়েছে
+        static_arrow = "<:arrow:1467198187470196974>"
+        animated_arrow = "<a:arrow:1468223732546932910>"
+
         embed = discord.Embed(
-            title=f"📩 {member.display_name}'s Invites — {total}", # নামের পাশে টোটাল ইনভাইট
+            title=f"📩 {member.display_name}'s Invites — {total}",
             color=0x2b2d31
         )
         embed.set_thumbnail(url=member.display_avatar.url)
         
-        # মাঝখানের তথ্যগুলো
-        embed.add_field(name="📥 Joins", value=f"`{stats['total']}`", inline=True)
-        embed.add_field(name="📤 Left", value=f"`{left}`", inline=True)
-        embed.add_field(name="🚫 Fake", value=f"`{fake}`", inline=True)
-        embed.add_field(name="🎁 Bonus", value=f"`{bonus}`", inline=True)
+        # মাঝখানের তথ্য সাজানো
+        embed.add_field(name=f"{static_arrow} Joins", value=f"`{stats['total']}`", inline=True)
+        embed.add_field(name=f"{static_arrow} Left", value=f"`{left}`", inline=True)
+        embed.add_field(name=f"{static_arrow} Fake", value=f"`{fake}`", inline=True)
+        embed.add_field(name=f"{static_arrow} Bonus", value=f"`{bonus}`", inline=True)
+        embed.add_field(name=f"{static_arrow} Rejoin", value=f"`{rejoin}`", inline=True)
         
-        # ইউজারের রিজিয়ন (অ্যাকাউন্ট ইনফো থেকে আইডিয়া পাওয়া যায়)
-        region = "Global" # ডিসকোর্ড এপিআই সরাসরি রিজিয়ন দেয় না, তাই এটি ডিফল্ট রাখা হয়েছে
-        embed.add_field(name="🌍 Region", value=f"`{region}`", inline=True)
+        # ভ্যালিড ইনভাইট সবার নিচে অ্যানিমেটেড অ্যারো দিয়ে
+        embed.add_field(
+            name="━━━━━━━━━━━━━━━━━━", 
+            value=f"{animated_arrow} **Valid Invites:** `{valid}`", 
+            inline=False
+        )
         
-        # ভ্যালিড ইনভাইট সবার নিচে বড় করে
-        embed.add_field(name="━━━━━━━━━━━━━━━━━━", value=f"✨ **Valid Invites:** `{valid}`", inline=False)
-        
-        embed.set_footer(text=f"Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
+        embed.set_footer(text=f"Invite Tracker | Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
         
         await ctx.send(embed=embed)
 
