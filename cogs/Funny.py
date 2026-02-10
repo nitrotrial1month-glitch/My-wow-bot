@@ -8,12 +8,12 @@ class Roleplay(commands.Cog):
         
         # --- GIF Links for Each Action ---
         self.kiss_gifs = [
-            "https://giphy.com/gifs/kiss-anime-love-jR22gdcPiOLaE",
-            "https://giphy.com/gifs/kiss-anime-riko-G3va31oEEnIkM",
-            "https://giphy.com/gifs/love-kiss-kissing-uAvMPK3narqc8",
-            "https://giphy.com/gifs/girlfriend-boyfriend-anime-romance-0r4i1pGnSGQsBNrLpm",
-            "https://giphy.com/gifs/kiss-sword-art-online-JFmIDQodMScJW",
-            "https://giphy.com/gifs/love-kiss-bm2O3nXTcKJeU"
+            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
+            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
+            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
+            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
+            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif",
+            "https://media.giphy.com/media/bm2O3nXTcKJeU/giphy.gif"
         ]
         self.kill_gifs = [
             "https://media.giphy.com/media/3o7qDDfL1h8n39hCco/giphy.gif",
