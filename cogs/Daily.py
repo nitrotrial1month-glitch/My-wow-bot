@@ -88,7 +88,7 @@ class DailyCommand(commands.Cog):
         # Cash Emoji (Nova) যোগ করতে চাইলে নিচে line টি ব্যবহার করতে পারেন
         # embed.add_field(name="💳 New Balance", value=f"<:Nova:1453460518764548186> {user_data['balance']:,}")
 
-        img_url = config.get('image_url', "https://i.imgur.com/8NID0vH.gif")
+        img_url = config.get('image_url', "https://cdn.discordapp.com/attachments/1439489026225868892/1470689376060313683/daily-22-15001.gif?ex=698c35b7&is=698ae437&hm=14b2a92af8b6cd0c084854b564dd4e30bd1631a7110c3ef13312d2b2fd815b08&")
         embed.set_image(url=img_url)
         
         if config.get('thumb_url'):
