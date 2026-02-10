@@ -30,7 +30,7 @@ class DailyDashboardModal(Modal, title="Daily Command Dashboard"):
 
     async def on_submit(self, interaction: discord.Interaction):
         config = load_json(CONFIG_FILE)
-        config['image_url'] = self.img_input.value if self.img_input.value else "https://i.imgur.com/8NID0vH.gif"
+        config['image_url'] = self.img_input.value if self.img_input.value else "https://cdn.discordapp.com/attachments/1439489026225868892/1470689376060313683/daily-22-15001.gif?ex=698c35b7&is=698ae437&hm=14b2a92af8b6cd0c084854b564dd4e30bd1631a7110c3ef13312d2b2fd815b08&"
         config['thumb_url'] = self.thumb_input.value if self.thumb_input.value else None
         save_json(CONFIG_FILE, config)
         await interaction.response.send_message("✅ Global Daily Dashboard updated!", ephemeral=True)
