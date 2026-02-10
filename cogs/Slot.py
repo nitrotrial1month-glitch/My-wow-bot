@@ -63,7 +63,7 @@ class Slots(commands.Cog):
         embed = discord.Embed(title="🎰 SLOTS 🎰", color=0x5865F2)
         embed.description = (
             f"**___ SLOTS ___**\n"
-            f"║ {self.spinning} {self.spinning} {self.spinning} ║  **{ctx.author.name}** bet {self.cash_emoji} **{bet:,}**\n"
+            f"║ {self.spinning} {self.spinning} {self.spinning} ║  **{ctx.author.display_name}** bet {self.cash_emoji} **{bet:,}**\n"
             f"╚═══════╝\n"
             f"**Spinning...**"
         )
@@ -78,7 +78,7 @@ class Slots(commands.Cog):
             
             embed.description = (
                 f"**___ SLOTS ___**\n"
-                f"║ {' '.join(current_slots)} ║  **{ctx.author.name}** bet {self.cash_emoji} **{bet:,}**\n"
+                f"║ {' '.join(current_slots)} ║  **{ctx.author.display_name}** bet {self.cash_emoji} **{bet:,}**\n"
                 f"╚═══════╝\n"
                 f"**Revealing...**"
             )
