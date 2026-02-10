@@ -17,11 +17,15 @@ def load_json(filename):
 class Balance(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # আপনার কাস্টম Nova কয়েন ইমোজি
         self.emoji_cash = "<:Nova:1453460518764548186>"
 
-    @commands.hybrid_command(name="bal", aliases=["balance", "cash"], description="View your total global earnings!")
-    @app_commands.describe(member="The member whose balance you want to see")
+    # এখানে আপনার বলা সবকটি নাম (Aliases) যোগ করা হয়েছে
+    @commands.hybrid_command(
+        name="bal", 
+        aliases=["balance", "cash", "c", "Cash", "C", "money", "M", "Money", "m"], 
+        description="Check global coin balance!"
+    )
+    @app_commands.describe(member="The member whose balance you want to check")
     async def balance(self, ctx: commands.Context, member: discord.Member = None):
         target = member or ctx.author
         user_id = str(target.id)
@@ -32,49 +36,30 @@ class Balance(commands.Cog):
         balance = user_data.get("balance", 0)
         streak = user_data.get("streak", 0)
 
-        # --- Premium Styled Embed ---
+        # --- Premium Style Embed ---
         embed = discord.Embed(
-            title=f"💳 Global Financial Status",
-            color=0x5865F2, # Discord Blurple color
+            title="💳 Global Financial Status",
+            color=0x5865F2,
             timestamp=discord.utils.utcnow()
         )
         
-        # ইউজারের নাম এবং আইকন
         embed.set_author(name=f"{target.name}'s Profile", icon_url=target.display_avatar.url)
         
-        # ব্যালেন্স সেকশন (বড় করে দেখানো)
         embed.add_field(
             name="✨ Wallet Balance", 
             value=f"### {self.emoji_cash} **{balance:,}**", 
             inline=False
         )
         
-        # স্ট্রিক সেkশন
-        embed.add_field(
-            name="🔥 Daily Streak", 
-            value=f"`{streak} Days`", 
-            inline=True
-        )
-
-        # ইনভেন্টরি বা মেম্বার স্ট্যাটাস (অতিরিক্ত সৌন্দর্য)
+        embed.add_field(name="🔥 Streak", value=f"`{streak} Days`", inline=True)
+        
         status = "Wealthy" if balance > 100000 else "Global Citizen"
-        embed.add_field(
-            name="🏆 Rank Status", 
-            value=f"`{status}`", 
-            inline=True
-        )
+        embed.add_field(name="🏆 Rank Status", value=f"`{status}`", inline=True)
         
-        # বড় থাম্বনেইল
         embed.set_thumbnail(url=target.display_avatar.url)
-        
-        # ফুটার উইথ আইকন
-        embed.set_footer(
-            text=f"Requested by {ctx.author.name} • Global Economy", 
-            icon_url=ctx.author.display_avatar.url
-        )
+        embed.set_footer(text=f"Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
         
         await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Balance(bot))
-      
