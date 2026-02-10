@@ -5,14 +5,16 @@ import json
 import os
 
 INVITE_DB = 'invites.json'
+MEMBER_MAP = 'member_map.json' # কে কার মাধ্যমে জয়েন করেছে তা সেভ রাখার জন্য
 
-def load_invites():
-    if os.path.exists(INVITE_DB):
-        with open(INVITE_DB, 'r') as f: return json.load(f)
+# --- ডাটাবেজ ফাংশন ---
+def load_data(file):
+    if os.path.exists(file):
+        with open(file, 'r') as f: return json.load(f)
     return {}
 
-def save_invites(data):
-    with open(INVITE_DB, 'w') as f: json.dump(data, f, indent=4)
+def save_data(file, data):
+    with open(file, 'w') as f: json.dump(data, f, indent=4)
 
 class Invites(commands.Cog):
     def __init__(self, bot):
@@ -21,55 +23,70 @@ class Invites(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # বট চালু হলে বর্তমান ইনভাইটগুলো মেমোরিতে রাখা
+        # বট অন হলে সব ইনভাইট ক্যাশ করা
         for guild in self.bot.guilds:
             try:
                 self.invites_cache[guild.id] = await guild.invites()
             except: pass
 
-    async def update_stats(self, guild_id, inviter_id, status):
-        data = load_invites()
-        gid, uid = str(guild_id), str(inviter_id)
-        
-        if gid not in data: data[gid] = {}
-        if uid not in data[gid]: 
-            data[gid][uid] = {"total": 0, "left": 0, "fake": 0, "bonus": 0}
-        
-        if status == "join":
-            data[gid][uid]["total"] += 1
-        elif status == "left":
-            data[gid][uid]["left"] += 1
-            
-        save_invites(data)
-
+    # --- ইনভাইট ট্র্যাকিং লজিক ---
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        # কে ইনভাইট করেছে তা বের করা
         invites_before = self.invites_cache.get(member.guild.id)
         invites_after = await member.guild.invites()
         
         for invite in invites_before:
             for new_invite in invites_after:
                 if invite.code == new_invite.code and new_invite.uses > invite.uses:
-                    # ইনভাইটারকে পাওয়া গেছে, ডাটাবেজ আপডেট
-                    await self.update_stats(member.guild.id, invite.inviter.id, "join")
-                    # নতুন ইনভাইটার আইডি মেম্বারের সাথে সাময়িকভাবে সেভ রাখা (লিভ ট্র্যাকিংয়ের জন্য)
-                    # এটি করার জন্য একটি মেম্বার-ইনভাইটার ম্যাপিং ফাইল বা ডাটাবেজ লাগে
+                    # ১. ইনভাইটার ডাটা আপডেট
+                    data = load_data(INVITE_DB)
+                    gid, inviter_id = str(member.guild.id), str(invite.inviter.id)
+                    
+                    if gid not in data: data[gid] = {}
+                    if inviter_id not in data[gid]:
+                        data[gid][inviter_id] = {"total": 0, "left": 0, "fake": 0, "bonus": 0}
+                    
+                    data[gid][inviter_id]["total"] += 1
+                    save_data(INVITE_DB, data)
+                    
+                    # ২. মেম্বার ম্যাপিং (লিভ ট্র্যাকিংয়ের জন্য জরুরি)
+                    mapping = load_data(MEMBER_MAP)
+                    if gid not in mapping: mapping[gid] = {}
+                    mapping[gid][str(member.id)] = inviter_id
+                    save_data(MEMBER_MAP, mapping)
+                    
                     self.invites_cache[member.guild.id] = invites_after
                     return
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
-        # এখানে সমস্যা হয় কারণ ডিসকোর্ড সরাসরি বলে না কে তাকে ইনভাইট করেছিল
-        # তবে আমরা ইনভাইট লিষ্ট চেক করে ডাটাবেজে 'left' কাউন্ট বাড়াতে পারি
-        # এর জন্য প্রয়োজন মেম্বার জয়েন করার সময় কে ইনভাইটার ছিল তা কোথাও সেভ রাখা
-        # আপাতত আমরা বেসিক 'left' ট্র্যাকিং করছি
-        pass 
+        # কেউ লিভ নিলে তাকে কে ইনভাইট করেছিল তা খুঁজে বের করা
+        mapping = load_data(MEMBER_MAP)
+        gid = str(member.guild.id)
+        mid = str(member.id)
+        
+        if gid in mapping and mid in mapping[gid]:
+            inviter_id = mapping[gid][mid]
+            data = load_data(INVITE_DB)
+            
+            if gid in data and inviter_id in data[gid]:
+                data[gid][inviter_id]["left"] += 1
+                save_data(INVITE_DB, data)
+                
+                # লিস্ট থেকে মেম্বারকে রিমুভ করা
+                del mapping[gid][mid]
+                save_data(MEMBER_MAP, mapping)
 
-    @commands.hybrid_command(name="invites", aliases=["i", "invite"], description="Detailed invite tracking")
+    # --- কমান্ড সেকশন (Wow i / Wow invites / Slash) ---
+    @commands.hybrid_command(
+        name="invites", 
+        aliases=["i", "inv"], 
+        description="Check detailed and valid invite statistics"
+    )
+    @app_commands.describe(member="Select a member to check their invites")
     async def invite_check(self, ctx, member: discord.Member = None):
         member = member or ctx.author
-        data = load_invites()
+        data = load_data(INVITE_DB)
         gid, uid = str(ctx.guild.id), str(member.id)
         
         stats = data.get(gid, {}).get(uid, {"total": 0, "left": 0, "fake": 0, "bonus": 0})
@@ -82,14 +99,24 @@ class Invites(commands.Cog):
         valid = (total - left - fake) + bonus
         if valid < 0: valid = 0
 
-        embed = discord.Embed(title=f"📩 Invites: {member.display_name}", color=0x00ffcc)
-        embed.add_field(name="✨ Valid", value=f"**` {valid} `**", inline=False)
-        embed.add_field(name="📩 Total", value=f"`{total}`", inline=True)
-        embed.add_field(name="🏃 Left", value=f"`{left}`", inline=True)
-        embed.add_field(name="🚫 Fake", value=f"`{fake}`", inline=True)
-        embed.set_footer(text=f"Invite Tracker | Requested by {ctx.author.name}")
+        embed = discord.Embed(
+            title=f"📊 Invite Stats: {member.display_name}",
+            color=0x00ffcc,
+            description=f"Invite information for {member.mention}"
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        
+        # তথ্যগুলো সাজানো
+        embed.add_field(name="✨ Valid Invites", value=f"**` {valid} `**", inline=False)
+        embed.add_field(name="📩 Total Joins", value=f"`{total}`", inline=True)
+        embed.add_field(name="🏃 Left Members", value=f"`{left}`", inline=True)
+        embed.add_field(name="🚫 Fake/Bots", value=f"`{fake}`", inline=True)
+        embed.add_field(name="🎁 Bonus", value=f"`{bonus}`", inline=True)
+        
+        embed.set_footer(text=f"Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
         
         await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Invites(bot))
+    
