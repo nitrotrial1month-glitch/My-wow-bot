@@ -16,15 +16,6 @@ def get_prefix(bot, message):
     except:
         return "!"
 
-class MyBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        intents.members = True 
-        # এখানে command_prefix এ আমাদের ফাংশনটি দিয়ে দিলাম
-        super().__init__(command_prefix=get_prefix, intents=intents)
-        
-
 # Railway Token
 TOKEN = os.getenv('DISCORD_TOKEN')
 
@@ -49,6 +40,14 @@ server_data = {
         "color": 0xff0000
     }
 }
+class MyBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True 
+        # এখানে command_prefix এ আমাদের ফাংশনটি দিয়ে দিলাম
+        super().__init__(command_prefix=get_prefix, intents=intents)
+        
     async def setup_hook(self):
         # বাটনগুলো মেমোরিতে সেভ করা (যাতে Interaction Failed না আসে)
         try:
