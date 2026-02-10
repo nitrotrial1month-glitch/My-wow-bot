@@ -29,8 +29,10 @@ class CoinFlip(commands.Cog):
         self.emoji_cash = "<:Nova:1453460518764548186>"   
 
     @commands.hybrid_command(name="cf", aliases=["coinflip", "flip"], description="Premium CoinFlip Game")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def coin_flip(self, ctx: commands.Context, *, args: str = None):
         if not args:
+            ctx.command.reset_cooldown(ctx)
             return await ctx.send("❌ Usage: `Wow cf t 100` or `Wow cf all`", ephemeral=True)
 
         user_id = str(ctx.author.id)
@@ -42,32 +44,32 @@ class CoinFlip(commands.Cog):
         balance = data[user_id]["balance"]
         raw_input = args.lower().strip()
 
-        # --- Side Detection (যদি 't' থাকে তবে Tails, নাহলে ডিফল্ট Heads) ---
+        # Side Detection
         user_choice = "tails" if re.search(r'\bt\b|\btails\b', raw_input) else "heads"
 
-        # --- Amount Detection ---
+        # Amount Detection
         bet = 0
         if "all" in raw_input or "cap" in raw_input:
-            # ব্যালেন্স যাই হোক, ২৫০,০০০ এর বেশি নেবে না
             bet = min(balance, 250000)
         else:
-            # শুধুমাত্র পিউর সংখ্যা (Digits) খুঁজবে, k ফরম্যাট কাজ করবে না
             match = re.search(r'\d+', raw_input)
             if match:
                 bet = int(match.group())
 
-        # --- Validations ---
+        # Validations
         if bet <= 0: 
-            return await ctx.send(f"❌ সঠিক পরিমাণ দিন! আপনার ব্যালেন্স: {self.emoji_cash} **{balance:,}**", ephemeral=True)
+            ctx.command.reset_cooldown(ctx)
+            return await ctx.send(f"❌ Enter a valid amount! Your balance: {self.emoji_cash} **{balance:,}**", ephemeral=True)
         
         if bet > 250000: 
-            # যদি ইউজার হাতে লিখে ২৫০,০০০ এর বেশি দেয়
+            ctx.command.reset_cooldown(ctx)
             return await ctx.send("🚫 Max bet limit is **250,000**.", ephemeral=True)
             
         if balance < bet: 
+            ctx.command.reset_cooldown(ctx)
             return await ctx.send(f"❌ Low Balance! You have {self.emoji_cash} **{balance:,}**", ephemeral=True)
 
-        # --- Phase 1: Animation Embed ---
+        # Phase 1: Animation Embed
         embed = discord.Embed(color=0x2b2d31) 
         embed.description = (
             f"**{ctx.author.display_name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
@@ -77,7 +79,7 @@ class CoinFlip(commands.Cog):
         
         await asyncio.sleep(2)
 
-        # --- Phase 2: Result Logic ---
+        # Phase 2: Result Logic
         actual_result = random.choice(["heads", "tails"])
         is_win = (user_choice == actual_result)
         final_emoji = self.emoji_heads if actual_result == "heads" else self.emoji_tails
@@ -93,7 +95,7 @@ class CoinFlip(commands.Cog):
 
         save_json(DB_FILE, data)
 
-        # --- Phase 3: Final Result Embed ---
+        # Phase 3: Final Result
         embed.description = (
             f"**{ctx.author.display_name}** spent {self.emoji_cash} **{bet:,}** and chose **{user_choice.upper()}**\n\n"
             f"{final_emoji} **The coin spins...** {status}"
@@ -102,6 +104,18 @@ class CoinFlip(commands.Cog):
         
         await msg.edit(embed=embed)
 
+    # --- Cooldown Error Handler ---
+    @coin_flip.error
+    async def cf_error(self, ctx, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            retry_after = f"{error.retry_after:.2f}"
+            # Custom requested format
+            msg = f"**⏱ | {ctx.author.display_name}**! Slow down and try the command again in **{retry_after}s**"
+            
+            if ctx.interaction:
+                await ctx.interaction.response.send_message(msg, ephemeral=True)
+            else:
+                await ctx.send(msg, delete_after=5)
+
 async def setup(bot):
     await bot.add_cog(CoinFlip(bot))
-    
