@@ -5,7 +5,6 @@ import asyncio
 import json
 import os
 
-# --- Global Database Path ---
 DB_FILE = 'economy.json'
 
 def load_json():
@@ -22,10 +21,12 @@ def save_json(data):
 class Slots(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.emoji_cash = "<:Nova:1453460518764548186>"
-        self.items = ["🍎", "💎", "🎰", "⭐", "🔔", "🍋", "🍒"]
+        self.cash_emoji = "<:Nova:1453460518764548186>"
+        self.spinning_slot = "<a:slot:1470669361155932230>" # আপনার দেওয়া ইমোজি
+        # স্লট আইটেমসমূহ
+        self.items = ["🍇", "🍒", "🍋", "🍊", "🍎", "💎", "⭐"]
 
-    @commands.hybrid_command(name="slot", aliases=["s", "S", "Slot"], description="Bet your cash on slots! (Win up to 6x)")
+    @commands.hybrid_command(name="slot", aliases=["s", "sl", "S", "Slot"], description="High stakes slots machine!")
     async def slots(self, ctx, amount: str):
         user_id = str(ctx.author.id)
         data = load_json()
@@ -35,75 +36,77 @@ class Slots(commands.Cog):
         
         balance = data[user_id]["balance"]
 
-        # --- Bet Logic ---
+        # --- Bet Calculation ---
         if amount.lower() == "all":
-            bet = min(balance, 100000) # Max bet limit 100k
+            bet = min(balance, 100000)
         else:
             try:
-                bet = int(amount.replace('k', '000'))
+                bet = int(amount.replace('k', '000').replace(',', ''))
             except ValueError:
-                return await ctx.send("❌ Please provide a valid amount! (e.g., `!s 100`, `!s all`)", ephemeral=True)
+                return await ctx.send("❌ Usage: `Wow slot 100` or `Wow sl all`", ephemeral=True)
 
-        if bet <= 0:
-            return await ctx.send("❌ You must bet more than 0!", ephemeral=True)
-        if bet > balance:
-            return await ctx.send(f"❌ Low balance! You only have {self.emoji_cash} **{balance:,}**", ephemeral=True)
-        if bet > 100000:
-            return await ctx.send("🚫 Max bet limit for Slots is **100,000**.", ephemeral=True)
+        if bet <= 0: return await ctx.send("❌ Invalid bet amount!", ephemeral=True)
+        if bet > balance: return await ctx.send(f"❌ You only have {self.cash_emoji} **{balance:,}**", ephemeral=True)
+        if bet > 100000: return await ctx.send("🚫 Max bet is **100,000**!", ephemeral=True)
 
-        # ব্যালেন্স কাটা
+        # Deduct bet
         data[user_id]["balance"] -= bet
         save_json(data)
 
-        # --- Phase 1: Spinning Animation ---
-        slot_display = ["<a:slot_rolling:123456789>", "<a:slot_rolling:123456789>", "<a:slot_rolling:123456789>"] # Use your own spinning emoji ID
-        embed = discord.Embed(title="🎰 SLOTS 🎰", color=discord.Color.blue())
-        embed.description = f"**[ {' | '.join(slot_display)} ]**\n\nSpinning for **{ctx.author.name}**..."
-        msg = await ctx.send(embed=embed)
+        # --- Initial Animation Display ---
+        # ইমেজের মতো ফরম্যাট: __SLOTS__ এবং স্লট বক্স
+        display_slots = f"{self.spinning_slot} {self.spinning_slot} {self.spinning_slot}"
+        content = (
+            f"**___ SLOTS ___**\n"
+            f"║ {display_slots} ║  **{ctx.author.name}** bet {self.cash_emoji} **{bet:,}**\n"
+            f"╚═══════╝"
+        )
+        msg = await ctx.send(content)
 
-        # ফলাফল নির্ধারণ (৫% চান্স হারানোর লজিক)
-        # ৫% সরাসরি হারবে, বাকি ৫০% রেন্ডমলি হারার সম্ভাবনা বাড়বে
-        final_slots = []
-        for i in range(3):
-            await asyncio.sleep(2) # ২ সেকেন্ড অপেক্ষা প্রতিটি স্লটের জন্য
-            final_slots.append(random.choice(self.items))
-            current_display = final_slots + slot_display[len(final_slots):]
-            embed.description = f"**[ {' | '.join(current_display)} ]**"
-            await msg.edit(embed=embed)
-
-        # --- Phase 2: Winning Logic ---
-        is_win = False
-        multiplier = 0
-
-        # তিনটি ম্যাচ করলে উইন
-        if final_slots[0] == final_slots[1] == final_slots[2]:
-            is_win = True
-            win_item = final_slots[0]
-            # আইটেম অনুযায়ী মাল্টিপ্লায়ার
-            if win_item == "🎰": multiplier = 6
-            elif win_item == "💎": multiplier = 4
-            elif win_item == "⭐": multiplier = 2
-            else: multiplier = 1 # 1x for others
+        # ফলাফল নির্ধারণ
+        # হারার চান্স ৫০% এবং বাকিটা রেন্ডম
+        is_loss = random.random() < 0.50
         
-        # হাই রিস্ক লজিক: হারার চান্স ৫০%+ করার জন্য
-        # এখানে ৩টি ম্যাচ না হলে ১০০% লস।
+        if is_loss:
+            # আলাদা ইমোজি দিবে যাতে না মিলে
+            final_result = random.sample(self.items, 3)
+        else:
+            # জেতার চান্স (সবগুলো মিলবে)
+            winning_item = random.choice(self.items)
+            final_result = [winning_item, winning_item, winning_item]
 
+        # ২ সেকেন্ড পর রেজাল্ট রিভিল
+        await asyncio.sleep(2)
+
+        # --- Winning Logic ---
+        is_win = final_result[0] == final_result[1] == final_result[2]
+        multiplier = 0
+        
         if is_win:
+            win_item = final_result[0]
+            if win_item == "⭐": multiplier = 6
+            elif win_item == "💎": multiplier = 4
+            elif win_item == "🍎": multiplier = 3
+            else: multiplier = 2
+            
             winnings = bet * multiplier
             data[user_id]["balance"] += winnings
             save_json(data)
             
-            embed.title = "🎉 YOU WON! 🎉"
-            embed.color = discord.Color.green()
-            embed.description = f"**[ {' | '.join(final_slots)} ]**\n\nMultiplier: **{multiplier}x**\nWon: {self.emoji_cash} **{winnings:,}**"
+            status_text = f"and won {self.cash_emoji} **{winnings:,}** (x{multiplier})"
         else:
-            embed.title = "💀 YOU LOST 💀"
-            embed.color = discord.Color.red()
-            embed.description = f"**[ {' | '.join(final_slots)} ]**\n\nLost: {self.emoji_cash} **{bet:,}**"
+            status_text = f"and lost it all... 💀"
 
-        embed.set_footer(text=f"New Balance: {data[user_id]['balance']:,}")
-        await msg.edit(embed=embed)
+        # --- Final Content Update ---
+        final_display = f"{final_result[0]} {final_result[1]} {final_result[2]}"
+        updated_content = (
+            f"**___ SLOTS ___**\n"
+            f"║ {final_display} ║  **{ctx.author.name}** bet {self.cash_emoji} **{bet:,}**\n"
+            f"╚═══════╝ {status_text}"
+        )
+        
+        await msg.edit(content=updated_content)
 
 async def setup(bot):
     await bot.add_cog(Slots(bot))
-          
+    
