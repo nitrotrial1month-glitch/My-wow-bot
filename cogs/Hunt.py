@@ -82,7 +82,7 @@ class HuntSystem(commands.Cog):
         # স্ক্রিনশটের মতো করে টেক্সট সাজানো হয়েছে
         embed = discord.Embed(color=0x2b2d31) # Dark theme for premium look
         
-        header = f"🌿 | **{ctx.author.name}** spent 10 {self.cash_emoji} and"
+        header = f"🌿 | **{ctx.author.display_name}** spent 10 {self.cash_emoji} and"
         main_text = f"caught a **{category}** {animal} **x{count}**!"
         
         embed.description = f"{header}\n{main_text}"
