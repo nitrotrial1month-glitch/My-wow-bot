@@ -10,21 +10,46 @@ PREFIX_FILE = 'prefixes.json'
 
 def load_config():
     """config.json ফাইল লোড করে এবং না থাকলে ডিফল্ট ডাটা তৈরি করে"""
+    
+    # ডিফল্ট ডাটা স্ট্রাকচার (তোমার আগের সব ডাটার সাথে নতুন প্রিমিয়াম ডাটা যোগ করা হলো)
+    default_data = {
+        "anti_link": {"enabled": False, "blocked_list": []},
+        "bad_words": [],
+        "auto_role_id": None,
+        "welcome": {"channel_id": None, "title": "Welcome!", "description": "Hi {member}!", "image_url": None, "color": 0x00ff00},
+        "leave": {"channel_id": None, "title": "Goodbye!", "description": "{member} left.", "image_url": None, "color": 0xff0000},
+        # --- NEW PREMIUM LOGIC ADDED HERE ---
+        "premium_users": {},   # ইউজারদের প্রিমিয়াম ডাটা
+        "premium_servers": {}  # সার্ভারের প্রিমিয়াম ডাটা
+        # ------------------------------------
+    }
+
     if not os.path.exists(CONFIG_FILE):
-        default_data = {
-            "anti_link": {"enabled": False, "blocked_list": []},
-            "bad_words": [],
-            "auto_role_id": None,
-            "welcome": {"channel_id": None, "title": "Welcome!", "description": "Hi {member}!", "image_url": None, "color": 0x00ff00},
-            "leave": {"channel_id": None, "title": "Goodbye!", "description": "{member} left.", "image_url": None, "color": 0xff0000}
-        }
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(default_data, f, indent=4)
         return default_data
     
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-        try: return json.load(f)
-        except: return {}
+        try: 
+            data = json.load(f)
+            
+            # --- নিরাপদ আপডেট: যদি আগের ফাইলে নতুন প্রিমিয়াম অপশন না থাকে, তবে তা যোগ করা হবে ---
+            updated = False
+            if "premium_users" not in data:
+                data["premium_users"] = {}
+                updated = True
+            if "premium_servers" not in data:
+                data["premium_servers"] = {}
+                updated = True
+                
+            # যদি কিছু আপডেট হয়, তবে তা ফাইলে সেভ করা হবে
+            if updated:
+                with open(CONFIG_FILE, 'w', encoding='utf-8') as fw:
+                    json.dump(data, fw, indent=4)
+                    
+            return data
+        except: 
+            return default_data
 
 def save_config(data):
     """config.json এ ডাটা সেভ করার সেন্ট্রাল ফাংশন"""
@@ -66,7 +91,7 @@ class MyBot(commands.Bot):
         except Exception as e:
             print(f"⚠️ Ticket View Error: {e}")
 
-        # ২. সমস্ত Cog (welcome, moderation, afk, give) লোড করা
+        # ২. সমস্ত Cog (welcome, moderation, afk, give, premium) লোড করা
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
@@ -94,7 +119,7 @@ async def on_ready():
     
     # config.json চেক করা
     load_config()
-    print("📂 config.json is Ready and Detected!")
+    print("📂 config.json is Ready (Premium Data Supported)!")
 
 @bot.event
 async def on_message(message):
@@ -113,4 +138,3 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     else:
         print("❌ ERROR: No DISCORD_TOKEN found in your environment variables!")
-        
