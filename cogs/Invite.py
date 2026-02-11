@@ -74,7 +74,7 @@ class Invites(commands.Cog):
                 data[gid][inviter_id]["left"] += 1
                 save_data(INVITE_DB, data)
 
-    @commands.hybrid_command(name="invites", aliases=["i", "inv"], description="Detailed Invite Analytics")
+    @commands.hybrid_command(name="invites", aliases=["i"], description="Detailed Invite Analytics")
     async def invite_check(self, ctx, member: discord.Member = None):
         member = member or ctx.author
         data = load_data(INVITE_DB)
