@@ -1,0 +1,112 @@
+import discord
+from discord.ext import commands
+from discord import app_commands
+import json
+import os
+import datetime
+
+# আপনার ডিসকর্ড ইউজার আইডি এখানে দিন (যেখানে বট মেসেজ পাঠাবে)
+OWNER_ID = 123456789012345678  # <--- Change this to your ID
+
+CONFIG_FILE = 'premium_data.json'
+
+def load_premium():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_premium(data):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+# --- ওনার ভেরিফিকেশন ভিউ ---
+class AdminVerifyView(discord.ui.View):
+    def __init__(self, user_id, days, tx_id):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.days = days
+        self.tx_id = tx_id
+
+    @discord.ui.button(label="Confirm Payment", style=discord.ButtonStyle.success, emoji="✅")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = load_premium()
+        expiry = datetime.datetime.now() + datetime.timedelta(days=self.days)
+        data[str(self.user_id)] = expiry.isoformat()
+        save_premium(data)
+
+        # ইউজারকে জানানো
+        user = interaction.client.get_user(self.user_id)
+        if user:
+            try:
+                embed = discord.Embed(title="🌟 Premium Activated!", 
+                                    description=f"Your premium has been activated for {self.days} days.\nExpires on: {expiry.strftime('%Y-%m-%d')}", 
+                                    color=discord.Color.gold())
+                await user.send(embed=embed)
+            except: pass
+
+        await interaction.response.edit_message(content=f"✅ Verified! Premium added to <@{self.user_id}>", view=None)
+
+    @discord.ui.button(label="Cancel / Fake", style=discord.ButtonStyle.danger, emoji="❌")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content=f"❌ Payment rejected for <@{self.user_id}>", view=None)
+
+# --- ইউজার ট্রানজেকশন ফরম ---
+class PaymentModal(discord.ui.Modal, title='Submit Payment Details'):
+    tx_id = discord.ui.TextInput(label='Transaction ID', placeholder='Enter the bKash/Nagad TxnID', required=True)
+    plan = discord.ui.TextInput(label='Plan (Days)', placeholder='30 for 1 month, 365 for 1 year', default='30', required=True)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        owner = interaction.client.get_user(OWNER_ID)
+        if not owner:
+            return await interaction.response.send_message("Bot owner is not reachable. Try again later.", ephemeral=True)
+
+        embed = discord.Embed(title="💰 New Premium Request", color=discord.Color.blue())
+        embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})")
+        embed.add_field(name="Txn ID", value=self.tx_id.value)
+        embed.add_field(name="Requested Plan", value=f"{self.plan.value} Days")
+        
+        await owner.send(embed=embed, view=AdminVerifyView(interaction.user.id, int(self.plan.value), self.tx_id.value))
+        await interaction.response.send_message("✅ Your request sent to owner! Wait for verification.", ephemeral=True)
+
+class PremiumManager(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @app_commands.command(name="buy_premium", description="Buy bot premium and see QR code")
+    async def buy_premium(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="💎 Get Premium Access", 
+                            description="Scan the QR code below to pay. After payment, click the button to submit your Transaction ID.",
+                            color=discord.Color.purple())
+        
+        # আপনার QR কোড ইমেজের লিংক এখানে দিন
+        embed.set_image(url="https://your-qr-link.com/qr.png") 
+        
+        view = discord.ui.View()
+        btn = discord.ui.Button(label="Submit Transaction ID", style=discord.ButtonStyle.primary, emoji="📝")
+        
+        async def btn_callback(inter):
+            await inter.response.send_modal(PaymentModal())
+        
+        btn.callback = btn_callback
+        view.add_item(btn)
+        
+        await interaction.response.send_message(embed=embed, view=view)
+
+    # প্রিমিয়াম চেক করার কমান্ড (Hybrid)
+    @commands.hybrid_command(name="premium_status", description="Check your premium validity")
+    async def premium_status(self, ctx):
+        data = load_premium()
+        user_id = str(ctx.author.id)
+        
+        if user_id in data:
+            expiry = datetime.datetime.fromisoformat(data[user_id])
+            if datetime.datetime.now() < expiry:
+                await ctx.send(f"🌟 Your premium is **Active** until: `{expiry.strftime('%Y-%m-%d')}`")
+                return
+        
+        await ctx.send("❌ You don't have an active premium.")
+
+async def setup(bot):
+    await bot.add_cog(PremiumManager(bot))
+  
