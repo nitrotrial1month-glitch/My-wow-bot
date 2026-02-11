@@ -3,6 +3,7 @@ from discord.ext import commands
 import json
 import os
 
+# Database Path (Same as your hunt system)
 DB_FILE = 'economy.json'
 
 def load_json():
@@ -17,44 +18,64 @@ def load_json():
 class Inv(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # জেমসের তথ্য (যাতে নামগুলো ইনভেন্টরিতে দেখানো যায়)
+        # জেমসের নামগুলো প্রদর্শনের জন্য
         self.gem_names = {
-            "F1": "Forest Gem (C)", "F2": "Forest Gem (U)", "F3": "Forest Gem (E)",
-            "L1": "Luck Gem (C)", "L2": "Luck Gem (U)", "L3": "Luck Gem (E)",
-            "M1": "Mythic Gem (C)", "M2": "Mythic Gem (U)", "M3": "Mythic Gem (E)"
+            "F1": "Forest Gem (Common)", "F2": "Forest Gem (Uncommon)", "F3": "Forest Gem (Epic)",
+            "L1": "Luck Gem (Common)", "L2": "Luck Gem (Uncommon)", "L3": "Luck Gem (Epic)",
+            "M1": "Mythic Gem (Common)", "M2": "Mythic Gem (Uncommon)", "M3": "Mythic Gem (Epic)"
         }
 
-    @commands.hybrid_command(name="inventory", aliases=["inv", "i"], description="Check your items")
+    @commands.hybrid_command(name="inventory", aliases=["inv", "i"], description="Check your gems and animals")
     async def inventory(self, ctx):
         data = load_json()
         user_id = str(ctx.author.id)
 
         if user_id not in data:
-            return await ctx.send("🎒 Your inventory is empty!")
+            return await ctx.send(f"🎒 **{ctx.author.display_name}**, your inventory is empty!")
 
         user_data = data[user_id]
         inventory = user_data.get("inventory", {})
         gems = user_data.get("gems", {})
+        active_buff = user_data.get("active_buff")
+        gem_uses = user_data.get("gem_uses", 0)
 
-        # প্রাণীদের লিস্ট তৈরি
+        # ১. এনিমেল সেকশন সাজানো
         animal_list = [f"{emoji} `x{count}`" for emoji, count in inventory.items() if count > 0]
-        animals_str = ", ".join(animal_list) if animal_list else "No animals"
+        animals_display = ", ".join(animal_list) if animal_list else "No animals caught yet."
 
-        # জেমসের লিস্ট তৈরি
-        gem_list = [f"● `{code}` {self.gem_names.get(code, 'Gem')} (x{count})" for code, count in gems.items() if count > 0]
-        gems_str = "\n".join(gem_list) if gem_list else "No gems"
+        # ২. জেমস সেকশন সাজানো
+        gem_list = []
+        if gems:
+            for code, count in gems.items():
+                if count > 0:
+                    name = self.gem_names.get(code, "Unknown Gem")
+                    gem_list.append(f"● `{code}` **{name}** (Stock: {count})")
+        
+        gems_display = "\n".join(gem_list) if gem_list else "No gems in stock."
 
-        # একটিভ বাফ
-        active = user_data.get("active_buff")
-        status = f"✅ `{active}` (Uses: {user_data.get('gem_uses', 0)})" if active else "❌ None"
+        # ৩. একটিভ বাফ স্ট্যাটাস
+        if active_buff:
+            buff_status = f"✅ `{active_buff}` **Active**\n🔋 Remaining Uses: `{gem_uses}`"
+        else:
+            buff_status = "❌ No gem active"
 
-        embed = discord.Embed(title=f"🎒 {ctx.author.name}'s Inventory", color=0x3498db)
-        embed.add_field(name="✨ Active Gem", value=status, inline=False)
-        embed.add_field(name="📦 Gems", value=gems_str, inline=False)
-        embed.add_field(name="🐾 Animals", value=animals_str[:1024], inline=False)
+        # ৪. এমবেড ডিজাইন
+        embed = discord.Embed(
+            title=f"🎒 {ctx.author.display_name}'s Inventory",
+            color=0x3498db
+        )
+        embed.set_thumbnail(url=ctx.author.display_avatar.url)
+
+        embed.add_field(name="✨ Active Buff", value=buff_status, inline=False)
+        embed.add_field(name="📦 Your Gems", value=gems_display, inline=False)
+        embed.add_field(name="🐾 Animals", value=animals_display[:1024], inline=False)
+        
+        # ব্যালেন্স এবং লুটবক্স তথ্য
+        balance = user_data.get('balance', 0)
+        lootboxes = user_data.get('lootboxes', 0)
+        embed.set_footer(text=f"Balance: {balance:,} | Lootboxes: {lootboxes}")
         
         await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Inv(bot))
-    
