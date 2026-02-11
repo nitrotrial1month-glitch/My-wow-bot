@@ -6,7 +6,7 @@ import os
 import datetime
 
 # আপনার ডিসকর্ড ইউজার আইডি এখানে দিন (যেখানে বট মেসেজ পাঠাবে)
-OWNER_ID = 123456789012345678  # <--- Change this to your ID
+OWNER_ID =1311355680640208926  # <--- Change this to your ID
 
 CONFIG_FILE = 'premium_data.json'
 
@@ -80,7 +80,7 @@ class PremiumManager(commands.Cog):
                             color=discord.Color.purple())
         
         # আপনার QR কোড ইমেজের লিংক এখানে দিন
-        embed.set_image(url="https://your-qr-link.com/qr.png") 
+        embed.set_image(url="https://cdn.discordapp.com/attachments/1465990068224393343/1471035901735076007/GooglePay_QR.png?ex=698d7871&is=698c26f1&hm=bd1bda69ad37ab50e39f8ed7e33c151bdeeb35e50c305218b25a64d3c182dc0f&") 
         
         view = discord.ui.View()
         btn = discord.ui.Button(label="Submit Transaction ID", style=discord.ButtonStyle.primary, emoji="📝")
