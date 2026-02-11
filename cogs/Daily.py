@@ -5,8 +5,9 @@ from discord.ui import Modal, TextInput
 import json
 import os
 import datetime
+import random # লুটবক্সের সংখ্যার জন্য র‍্যান্ডম ইমপোর্ট করা হয়েছে
 
-# Database Files (এগুলো সব সার্ভারের জন্য একটাই ফাইল থাকবে)
+# Database Files
 DB_FILE = 'economy.json'
 CONFIG_FILE = 'daily_config.json'
 
@@ -44,20 +45,22 @@ class DailyCommand(commands.Cog):
     async def daily_dashboard(self, interaction: discord.Interaction):
         await interaction.response.send_modal(DailyDashboardModal())
 
-    # Hybrid Command: প্রিফিক্স এবং স্ল্যাশ দুটোতেই কাজ করবে
-    @commands.hybrid_command(name="daily", description="Claim your global daily reward!")
+    @commands.hybrid_command(name="daily", description="Claim your global daily reward and lootboxes!")
     async def daily(self, ctx: commands.Context):
         data = load_json(DB_FILE)
         config = load_json(CONFIG_FILE)
         
-        # Global Logic: শুধু user.id ব্যবহার করা হচ্ছে
         user_id = str(ctx.author.id)
         now = datetime.datetime.now(datetime.timezone.utc)
 
+        # ইউজার ডেটা চেক এবং ডিফল্ট ভ্যালু (lootboxes যুক্ত করা হয়েছে)
         if user_id not in data:
-            data[user_id] = {"balance": 0, "streak": 0, "last_daily": None}
-
+            data[user_id] = {"balance": 0, "streak": 0, "last_daily": None, "lootboxes": 0}
+        
         user_data = data[user_id]
+        if "lootboxes" not in user_data: # পুরোনো ইউজারদের জন্য চেক
+            user_data["lootboxes"] = 0
+
         last_daily_str = user_data.get("last_daily")
         
         # Cooldown check
@@ -67,26 +70,34 @@ class DailyCommand(commands.Cog):
                 time_left = datetime.timedelta(seconds=86400 - (now - last_daily).total_seconds())
                 hours, remainder = divmod(int(time_left.total_seconds()), 3600)
                 minutes, _ = divmod(remainder, 60)
-                return await ctx.send(f"⏳ Please wait **{hours}h {minutes}m** before claiming your global reward again!", ephemeral=True)
+                return await ctx.send(f"⏳ Please wait **{hours}h {minutes}m** before claiming your rewards again!", ephemeral=True)
 
-        # Reward Calculation
+        # Reward Calculation (Coins)
         streak = user_data.get("streak", 0)
         reward = 800 + (streak * 200)
         user_data["balance"] += reward
+        
+        # --- Lootbox Logic (1 to 3 boxes) ---
+        boxes_found = random.randint(1, 3)
+        user_data["lootboxes"] += boxes_found
+        
+        # Streak and Time update
         user_data["streak"] = streak + 1
         user_data["last_daily"] = now.isoformat()
         save_json(DB_FILE, data)
 
+        # Create Embed
         embed = discord.Embed(
             title="✨ GLOBAL DAILY REWARD ✨", 
-            description=f"Congratulations {ctx.author.mention}!", 
+            description=f"Congratulations {ctx.author.mention}, you've claimed your rewards!", 
             color=0x2ecc71
         )
-        embed.add_field(name="💰 Reward", value=f"**{reward:,}** Coins")
-        embed.add_field(name="🔥 Streak", value=f"**{user_data['streak']}** Days")
+        embed.add_field(name="💰 Coins Found", value=f"**{reward:,}** Coins", inline=True)
+        embed.add_field(name="🎁 Lootboxes", value=f"**{boxes_found}** Boxes 📦", inline=True)
+        embed.add_field(name="🔥 Streak", value=f"**{user_data['streak']}** Days", inline=False)
         
-        # Cash Emoji (Nova) যোগ করতে চাইলে নিচে line টি ব্যবহার করতে পারেন
-        # embed.add_field(name="💳 New Balance", value=f"<:Nova:1453460518764548186> {user_data['balance']:,}")
+        # Total Stats in Footer or Field
+        embed.add_field(name="🎒 Your Total Lootboxes", value=f"**{user_data['lootboxes']}**", inline=True)
 
         img_url = config.get('image_url', "https://cdn.discordapp.com/attachments/1439489026225868892/1470689376060313683/daily-22-15001.gif?ex=698c35b7&is=698ae437&hm=14b2a92af8b6cd0c084854b564dd4e30bd1631a7110c3ef13312d2b2fd815b08&")
         embed.set_image(url=img_url)
@@ -94,7 +105,7 @@ class DailyCommand(commands.Cog):
         if config.get('thumb_url'):
             embed.set_thumbnail(url=config['thumb_url'])
         
-        embed.set_footer(text=f"Global Economy System • {ctx.author.name}")
+        embed.set_footer(text=f"Global Economy • Total Balance: {user_data['balance']:,}")
         
         await ctx.send(embed=embed)
 
