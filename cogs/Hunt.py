@@ -3,6 +3,7 @@ from discord.ext import commands
 import random
 import json
 import os
+import asyncio
 
 DB_FILE = 'economy.json'
 
@@ -21,28 +22,25 @@ class AdvancedHuntingSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         
-        # ১. বড় এনিমেল লিস্ট (OwO Style)
+        # ১. এনিমেল লিস্ট
         self.animals = {
-            "common": ["🐭", "🐹", "🐰", "🐱", "🐶", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐹", "🐣", "🐥", "🐧"],
+            "common": ["🐭", "🐹", "🐰", "🐱", "🐶", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐣", "🐥", "🐧"],
             "uncommon": ["🐸", "🐵", "🐒", "🐔", "🐤", "🐦", "🦉", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞"],
-            "rare": ["🦄", "🐴", "🐗", "🦒", "🐘", "🦏", "🐫", "🐪", "🦌", "🦓", "🐆", "🐅", "🦍", "🦧", "🐕‍🦺", "🐩"],
+            "rare": ["🦄", "🐗", "🦒", "🐘", "🦏", "🐪", "🦌", "🦓", "🐆", "🐅", "🦍", "🦧", "🐕‍🦺", "🐩"],
             "epic": ["🐍", "🦎", "🦖", "🦕", "🐙", "🦑", "🦐", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊"],
             "legendary": ["🐉", "🐲", "🦅", "🐆", "🦈", "🦍", "🦣", "🦦", "🦥", "🦩", "🕊️", "🦜", "🦢", "🦚", "🛸", "👾"]
         }
 
-        # ২. জেমস কনফিগ (৩ টাইপ এবং ৩ ক্যাটাগরি)
+        # ২. জেমস কনফিগ
         self.gems = {
-            # Forest (F) - প্রাণীর সংখ্যা (Count) বাড়াবে
             "F1": {"name": "Forest Gem (Common)", "type": "count", "power": 2, "uses": 5},
             "F2": {"name": "Forest Gem (Uncommon)", "type": "count", "power": 5, "uses": 10},
             "F3": {"name": "Forest Gem (Epic)", "type": "count", "power": 10, "uses": 15},
             
-            # Luck (L) - রেয়ার প্রাণী পাওয়ার চান্স বাড়াবে
             "L1": {"name": "Luck Gem (Common)", "type": "luck", "power": 2, "uses": 5},
             "L2": {"name": "Luck Gem (Uncommon)", "type": "luck", "power": 4, "uses": 10},
             "L3": {"name": "Luck Gem (Epic)", "type": "luck", "power": 8, "uses": 15},
             
-            # Mythic (M) - সংখ্যা + লাক দুটোই বাড়াবে
             "M1": {"name": "Mythic Gem (Common)", "type": "mythic", "power": 1.5, "uses": 5},
             "M2": {"name": "Mythic Gem (Uncommon)", "type": "mythic", "power": 3.0, "uses": 10},
             "M3": {"name": "Mythic Gem (Epic)", "type": "mythic", "power": 6.0, "uses": 15},
@@ -55,102 +53,162 @@ class AdvancedHuntingSystem(commands.Cog):
         data = load_json()
         user_id = str(ctx.author.id)
 
+        # ডাটা ইনিশিয়ালাইজেশন
         if user_id not in data:
             data[user_id] = {"balance": 100, "inventory": {}, "gems": {}, "active_buff": None, "gem_uses": 0}
         
         user_data = data[user_id]
-        active_code = user_data.get("active_buff")
         
+        # ডিফল্ট ভ্যালু সেট করা (যদি জেম না থাকে)
         multiplier = 1
         luck_boost = 1.0
         durability_msg = ""
+        
+        active_code = user_data.get("active_buff")
 
-        # জেম পাওয়ার প্রোসেসিং (Forest, Luck, Mythic এর কাজ আলাদা করা হয়েছে)
-        if active_code in self.gems:
+        # জেম প্রসেসিং
+        if active_code and active_code in self.gems:
             gem_info = self.gems[active_code]
+            
+            # জেমের টাইপ অনুযায়ী পাওয়ার সেট করা
             if gem_info["type"] == "count":
                 multiplier = gem_info["power"]
             elif gem_info["type"] == "luck":
                 luck_boost = gem_info["power"]
             elif gem_info["type"] == "mythic":
-                multiplier = gem_info["power"] # সংখ্যা বাড়াবে
-                luck_boost = gem_info["power"] # লাকও বাড়াবে
+                multiplier = gem_info["power"]
+                luck_boost = gem_info["power"]
 
-            user_data["gem_uses"] -= 1
+            # জেম ব্যবহার কমানো
+            user_data["gem_uses"] = user_data.get("gem_uses", 0) - 1
+            
             if user_data["gem_uses"] <= 0:
                 user_data["active_buff"] = None
-                durability_msg = f"\n⚠️ Your Gem `{active_code}` has broken!"
+                durability_msg = f"\n💔 Your **{gem_info['name']}** has broken!"
             else:
-                durability_msg = f"\n🔋 `{active_code}` uses left: {user_data['gem_uses']}"
+                durability_msg = f"\n💎 **{active_code}** active! Uses left: {user_data['gem_uses']}"
 
-        # হান্টিং লজিক (লাক বুস্টের প্রভাব)
-        chance = random.random() * 100 / luck_boost
+        # হান্টিং লজিক
+        # লাক বুস্ট যত বেশি, চান্স ভ্যালু তত কম হবে (মানে ভালো এনিমেল পাওয়ার সম্ভাবনা বাড়বে)
+        raw_chance = random.uniform(0, 100)
+        final_chance = raw_chance / luck_boost 
         
-        if chance <= 1: cat = "legendary"
-        elif chance <= 5: cat = "epic"
-        elif chance <= 15: cat = "rare"
-        elif chance <= 35: cat = "uncommon"
-        else: cat = "common"
+        cat = "common"
+        if final_chance <= 1: cat = "legendary"
+        elif final_chance <= 5: cat = "epic"
+        elif final_chance <= 15: cat = "rare"
+        elif final_chance <= 35: cat = "uncommon"
 
-        animal = random.choice(self.animals[cat])
-        total_caught = int(1 * multiplier)
+        # এনিমেল সিলেক্ট করা
+        animal_list = self.animals.get(cat, self.animals["common"])
+        animal = random.choice(animal_list)
+        
+        # এনিমেল সংখ্যা (মাল্টিপ্লায়ার সহ)
+        count = int(1 * multiplier)
 
         # ইনভেন্টরি আপডেট
         inventory = user_data.get("inventory", {})
-        inventory[animal] = inventory.get(animal, 0) + total_caught
+        inventory[animal] = inventory.get(animal, 0) + count
         user_data["inventory"] = inventory
+        
         save_json(data)
 
-        # রেজাল্ট আউটপুট
-        await ctx.send(f"🌿 | **{ctx.author.display_name}** caught a **{cat.upper()}** {animal} **x{total_caught}**!{durability_msg}")
+        # ফাইনাল মেসেজ
+        await ctx.send(f"🏹 **{ctx.author.display_name}** went hunting and caught:\n"
+                       f"🐾 **{cat.upper()}** {animal} **x{count}**"
+                       f"{durability_msg}")
 
-    # --- ৪. জেম ব্যবহার কমান্ড ---
+        # Quest আপডেট (যদি থাকে)
+        quest_cog = self.bot.get_cog("DailyQuests")
+        if quest_cog:
+            await quest_cog.update_quest_progress(ctx.author.id, "hunt")
+
+    # --- ৪. কাস্টম কুলডাউন এরর হ্যান্ডলার ---
+    @hunt.error
+    async def hunt_error(self, ctx, error):
+        if isinstance(error, commands.CommandOnCooldown):
+            # সময় ফরম্যাট করা (দশমিকের পর ১ ঘর পর্যন্ত)
+            time_left = round(error.retry_after, 1)
+            embed = discord.Embed(
+                description=f"⏳ **{ctx.author.display_name}** Please wait **{time_left}s** before hunting again!",
+                color=discord.Color.red()
+            )
+            await ctx.send(embed=embed, delete_after=time_left)
+        else:
+            raise error # অন্য কোনো এরর হলে কনসোলে দেখাবে
+
+    # --- ৫. জেম ব্যবহার কমান্ড ---
     @commands.hybrid_command(name="use")
     async def use_gem(self, ctx, code: str):
         data = load_json()
         user_id = str(ctx.author.id)
-        code = code.upper()
+        code = code.upper() # F1, f1 সব কাজ করবে
 
+        if user_id not in data: 
+             data[user_id] = {"balance": 0, "inventory": {}, "gems": {}}
+
+        user_data = data[user_id]
+        user_gems = user_data.get("gems", {})
+
+        # জেম আছে কিনা চেক
         if code not in self.gems:
-            return await ctx.send("❌ Invalid Gem Code! (Ex: F1, L2, M3)")
+            return await ctx.send("❌ Invalid Gem Code! Example: `F1`, `L2`, `M1`")
+        
+        if user_gems.get(code, 0) <= 0:
+            return await ctx.send(f"❌ You don't have any **{code}** gems in your inventory!")
 
-        user_data = data.get(user_id, {})
-        if user_data.get("gems", {}).get(code, 0) <= 0:
-            return await ctx.send(f"❌ You don't have any `{code}` gems!")
-
+        # অলরেডি বাফ আছে কিনা চেক
         if user_data.get("active_buff"):
-            return await ctx.send(f"⚠️ You already have an active buff: `{user_data['active_buff']}`!")
+            return await ctx.send(f"⚠️ You already have an active gem: **{user_data['active_buff']}**! Wait until it breaks.")
 
-        # জেম এক্টিভেট করা
-        user_data["gems"][code] -= 1
+        # জেম অ্যাক্টিভেট করা
+        user_gems[code] -= 1
         user_data["active_buff"] = code
         user_data["gem_uses"] = self.gems[code]["uses"]
+        
         save_json(data)
 
-        await ctx.send(f"💎 | **{ctx.author.display_name}**, you used **{self.gems[code]['name']}**! Active for **{user_data['gem_uses']}** hunts.")
+        await ctx.send(f"✅ You equipped **{self.gems[code]['name']}**!\n"
+                       f"⚡ Effect: **{self.gems[code]['type'].upper()}** Boost\n"
+                       f"🔋 Durability: **{user_data['gem_uses']}** hunts")
 
-    # --- ৫. লুটবক্স ওপেন কমান্ড ---
+    # --- ৬. লুটবক্স ওপেন কমান্ড ---
     @commands.hybrid_command(name="open", aliases=["op", "lb"])
     async def open_box(self, ctx):
         data = load_json()
         user_id = str(ctx.author.id)
 
-        if data.get(user_id, {}).get("lootboxes", 0) <= 0:
-            return await ctx.send(f"**{ctx.author.display_name}**, you don't have any boxes! 📦")
+        user_data = data.get(user_id, {})
+        lootboxes = user_data.get("lootboxes", 0)
 
-        # জেম তৈরির প্রোবাবিলিটি
-        tier = random.choices(["1", "2", "3"], weights=[70, 25, 5])[0] # Common, Uncommon, Epic
-        g_type = random.choices(["F", "L", "M"], weights=[45, 45, 10])[0] # Forest, Luck, Mythic
-        chosen_code = f"{g_type}{tier}"
+        if lootboxes <= 0:
+            return await ctx.send(f"📦 **{ctx.author.display_name}**, you don't have any lootboxes!")
+
+        # জেম পাওয়ার লজিক
+        # টায়ার (Common 70%, Uncommon 25%, Epic 5%)
+        tier = random.choices(["1", "2", "3"], weights=[70, 25, 5])[0]
+        # টাইপ (Forest 45%, Luck 45%, Mythic 10%)
+        g_type = random.choices(["F", "L", "M"], weights=[45, 45, 10])[0]
+        
+        chosen_code = f"{g_type}{tier}" # যেমন F1 বা M3
 
         # ডাটা আপডেট
-        data[user_id]["lootboxes"] -= 1
-        if "gems" not in data[user_id]: data[user_id]["gems"] = {}
-        data[user_id]["gems"][chosen_code] = data[user_id]["gems"].get(chosen_code, 0) + 1
+        user_data["lootboxes"] -= 1
+        
+        if "gems" not in user_data: user_data["gems"] = {}
+        user_data["gems"][chosen_code] = user_data["gems"].get(chosen_code, 0) + 1
+        
         save_json(data)
 
-        await ctx.send(f"📦 | **{ctx.author.display_name}**, you found: **{self.gems[chosen_code]['name']}** (`{chosen_code}`)")
+        # এমবেড রেজাল্ট
+        gem_name = self.gems[chosen_code]['name']
+        embed = discord.Embed(
+            title="📦 Lootbox Opened!",
+            description=f"You found a rare gem!\n💎 **{gem_name}** (`{chosen_code}`)",
+            color=discord.Color.purple()
+        )
+        await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(AdvancedHuntingSystem(bot))
-            
+    
