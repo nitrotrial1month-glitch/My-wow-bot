@@ -1,24 +1,11 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import json
-import os
 import datetime
+# utils থেকে প্রয়োজনীয় ফাংশনগুলো ইম্পোর্ট করা হলো
+from utils import load_config, save_config 
 
-# আপনার ডিসকর্ড ইউজার আইডি এখানে দিন (যেখানে বট মেসেজ পাঠাবে)
-OWNER_ID =1311355680640208926  # <--- Change this to your ID
-
-CONFIG_FILE = 'premium_data.json'
-
-def load_premium():
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-def save_premium(data):
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(data, f, indent=4)
+OWNER_ID = 1311355680640208926 
 
 # --- ওনার ভেরিফিকেশন ভিউ ---
 class AdminVerifyView(discord.ui.View):
@@ -30,10 +17,17 @@ class AdminVerifyView(discord.ui.View):
 
     @discord.ui.button(label="Confirm Payment", style=discord.ButtonStyle.success, emoji="✅")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        data = load_premium()
+        # config.json লোড করা হচ্ছে
+        config = load_config()
+        
+        # প্রিমিয়াম সেকশন না থাকলে তৈরি করা
+        if "premium" not in config:
+            config["premium"] = {}
+            
         expiry = datetime.datetime.now() + datetime.timedelta(days=self.days)
-        data[str(self.user_id)] = expiry.isoformat()
-        save_premium(data)
+        # ডাটা config.json এ সেভ হচ্ছে
+        config["premium"][str(self.user_id)] = expiry.isoformat()
+        save_config(config)
 
         # ইউজারকে জানানো
         user = interaction.client.get_user(self.user_id)
@@ -53,13 +47,13 @@ class AdminVerifyView(discord.ui.View):
 
 # --- ইউজার ট্রানজেকশন ফরম ---
 class PaymentModal(discord.ui.Modal, title='Submit Payment Details'):
-    tx_id = discord.ui.TextInput(label='Transaction ID', placeholder='Enter the bKash/Nagad TxnID', required=True)
-    plan = discord.ui.TextInput(label='Plan (Days)', placeholder='30 for 1 month, 365 for 1 year', default='30', required=True)
+    tx_id = discord.ui.TextInput(label='Transaction ID', placeholder='Enter the TxnID', required=True)
+    plan = discord.ui.TextInput(label='Plan (Days)', placeholder='30, 90, or 365', default='30', required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         owner = interaction.client.get_user(OWNER_ID)
         if not owner:
-            return await interaction.response.send_message("Bot owner is not reachable. Try again later.", ephemeral=True)
+            return await interaction.response.send_message("Owner not found!", ephemeral=True)
 
         embed = discord.Embed(title="💰 New Premium Request", color=discord.Color.blue())
         embed.add_field(name="User", value=f"{interaction.user} ({interaction.user.id})")
@@ -67,7 +61,7 @@ class PaymentModal(discord.ui.Modal, title='Submit Payment Details'):
         embed.add_field(name="Requested Plan", value=f"{self.plan.value} Days")
         
         await owner.send(embed=embed, view=AdminVerifyView(interaction.user.id, int(self.plan.value), self.tx_id.value))
-        await interaction.response.send_message("✅ Your request sent to owner! Wait for verification.", ephemeral=True)
+        await interaction.response.send_message("✅ Your request sent! Wait for owner verification.", ephemeral=True)
 
 class PremiumManager(commands.Cog):
     def __init__(self, bot):
@@ -76,10 +70,9 @@ class PremiumManager(commands.Cog):
     @app_commands.command(name="buy_premium", description="Buy bot premium and see QR code")
     async def buy_premium(self, interaction: discord.Interaction):
         embed = discord.Embed(title="💎 Get Premium Access", 
-                            description="Scan the QR code below to pay. After payment, click the button to submit your Transaction ID.",
+                            description="Scan the QR code below to pay. Then click the button to submit TxnID.",
                             color=discord.Color.purple())
         
-        # আপনার QR কোড ইমেজের লিংক এখানে দিন
         embed.set_image(url="https://cdn.discordapp.com/attachments/1465990068224393343/1471035901735076007/GooglePay_QR.png?ex=698d7871&is=698c26f1&hm=bd1bda69ad37ab50e39f8ed7e33c151bdeeb35e50c305218b25a64d3c182dc0f&") 
         
         view = discord.ui.View()
@@ -90,17 +83,16 @@ class PremiumManager(commands.Cog):
         
         btn.callback = btn_callback
         view.add_item(btn)
-        
         await interaction.response.send_message(embed=embed, view=view)
 
-    # প্রিমিয়াম চেক করার কমান্ড (Hybrid)
     @commands.hybrid_command(name="premium_status", description="Check your premium validity")
     async def premium_status(self, ctx):
-        data = load_premium()
+        config = load_config()
+        premium_data = config.get("premium", {})
         user_id = str(ctx.author.id)
         
-        if user_id in data:
-            expiry = datetime.datetime.fromisoformat(data[user_id])
+        if user_id in premium_data:
+            expiry = datetime.datetime.fromisoformat(premium_data[user_id])
             if datetime.datetime.now() < expiry:
                 await ctx.send(f"🌟 Your premium is **Active** until: `{expiry.strftime('%Y-%m-%d')}`")
                 return
@@ -109,4 +101,4 @@ class PremiumManager(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(PremiumManager(bot))
-  
+        
