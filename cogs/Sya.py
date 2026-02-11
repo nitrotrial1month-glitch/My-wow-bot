@@ -50,7 +50,7 @@ class TalkSystem(commands.Cog):
     @commands.hybrid_command(
         name="embed", 
         description="🖼️ [PREMIUM] Send a stylish embed message", 
-        aliases=["eb", "esay"]
+        aliases=["esay", "say"]
     )
     @app_commands.describe(title="Embed Title", description="Embed Content", color="Hex code (e.g. #ff0000)")
     async def embed(self, ctx, title: str, description: str, color: str = "#00ff00"):
