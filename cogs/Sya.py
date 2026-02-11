@@ -19,7 +19,7 @@ class TalkSystem(commands.Cog):
     @commands.hybrid_command(
         name="say", 
         description="🗣️ [PREMIUM] Make the bot repeat your words", 
-        aliases=["s", "talk"]
+        aliases=["say", "talk"]
     )
     @app_commands.describe(message="The message to say", channel="Target channel (optional)")
     async def say(self, ctx, message: str, channel: discord.TextChannel = None):
