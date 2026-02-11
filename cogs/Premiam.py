@@ -6,7 +6,7 @@ from utils import load_config, save_config
 
 OWNER_ID = 1311355680640208926 
 
-# --- ১. ওনার ভেরিফিকেশন ভিউ (অ্যাডমিন কনফার্মেশন) ---
+# --- ১. ওনার ভেরিফিকেশন ভিউ ---
 class AdminVerifyView(discord.ui.View):
     def __init__(self, user_id, days, tx_id):
         super().__init__(timeout=None)
@@ -31,14 +31,13 @@ class AdminVerifyView(discord.ui.View):
                                     color=discord.Color.gold())
                 await user.send(embed=embed)
             except: pass
-
         await interaction.response.edit_message(content=f"✅ Approved! Premium added to <@{self.user_id}>", view=None)
 
     @discord.ui.button(label="Cancel / Fake", style=discord.ButtonStyle.danger, emoji="❌")
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(content=f"❌ Payment rejected for <@{self.user_id}>", view=None)
 
-# --- ২. পেমেন্ট ফর্ম (Transaction ID সাবমিট) ---
+# --- ২. পেমেন্ট ফর্ম (Modal) ---
 class PaymentModal(discord.ui.Modal):
     def __init__(self, days):
         super().__init__(title=f'Submit Payment - {days} Days Plan')
@@ -57,7 +56,17 @@ class PaymentModal(discord.ui.Modal):
         await owner.send(embed=embed, view=AdminVerifyView(interaction.user.id, self.days, self.tx_id.value))
         await interaction.response.send_message("✅ Your request has been sent! Please wait for owner verification.", ephemeral=True)
 
-# --- ৩. প্ল্যান সিলেক্ট করার মেনু (Dropdown) ---
+# --- ৩. সাবমিট বাটন ভিউ ---
+class SubmitTxIDView(discord.ui.View):
+    def __init__(self, days):
+        super().__init__(timeout=None)
+        self.days = days
+
+    @discord.ui.button(label="Submit TxnID", style=discord.ButtonStyle.primary, emoji="📝")
+    async def submit_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(PaymentModal(self.days))
+
+# --- ৪. প্ল্যান সিলেক্ট করার মেনু ---
 class PlanSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=60)
@@ -65,9 +74,9 @@ class PlanSelectView(discord.ui.View):
     @discord.ui.select(
         placeholder="Select a Premium Plan...",
         options=[
-            discord.SelectOption(label="Basic (1 Month)", value="30", description="49 BDT - 30 Days Access", emoji="⭐"),
-            discord.SelectOption(label="Standard (3 Months)", value="90", description="129 BDT - 90 Days Access", emoji="🌟"),
-            discord.SelectOption(label="Legend (1 Year)", value="365", description="399 BDT - 365 Days Access", emoji="👑"),
+            discord.SelectOption(label="Basic (1 Month)", value="30", description="49 BDT - 30 Days", emoji="⭐"),
+            discord.SelectOption(label="Standard (3 Months)", value="90", description="129 BDT - 90 Days", emoji="🌟"),
+            discord.SelectOption(label="Legend (1 Year)", value="365", description="399 BDT - 365 Days", emoji="👑"),
         ]
     )
     async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
@@ -75,27 +84,13 @@ class PlanSelectView(discord.ui.View):
         
         embed = discord.Embed(title="💳 Payment Details", 
                             description=f"You have selected the **{days} Days Plan**.\n\n"
-                                        "**Please Pay:**\n"
-                                        f"- Amount: `{select.options[0].description.split(' - ')[0]}`\n"
-                                        "- Method: bKash / Nagad (Personal)\n\n"
-                                        "Scan the QR code below and then click 'Submit TxnID'.",
+                                        "**Scan the QR code below and then click 'Submit TxnID'.**",
                             color=discord.Color.green())
-        
-        # QR Code Link
         embed.set_image(url="https://cdn.discordapp.com/attachments/1465990068224393343/1471035901735076007/GooglePay_QR.png?ex=698d7871&is=698c26f1&hm=bd1bda69ad37ab50e39f8ed7e33c151bdeeb35e50c305218b25a64d3c182dc0f&")
 
-        view = discord.ui.View()
-        btn = discord.ui.Button(label="Submit TxnID", style=discord.ButtonStyle.primary, emoji="📝")
-        
-        async def btn_callback(inter):
-            await inter.response.send_modal(PaymentModal(days))
-        
-        btn.callback = btn_callback
-        view.add_item(btn)
-        
-        await interaction.response.edit_message(embed=embed, view=view)
+        # এখানে SubmitTxIDView ব্যবহার করা হয়েছে যাতে বাটনটি কাজ করে
+        await interaction.response.edit_message(embed=embed, view=SubmitTxIDView(days))
 
-# --- ৪. মেইন কগ ক্লাস ---
 class PremiumManager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -109,20 +104,6 @@ class PremiumManager(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, view=PlanSelectView())
 
-    @commands.hybrid_command(name="premium_status", description="Check your premium validity")
-    async def premium_status(self, ctx):
-        config = load_config()
-        premium_data = config.get("premium", {})
-        user_id = str(ctx.author.id)
-        
-        if user_id in premium_data:
-            expiry = datetime.datetime.fromisoformat(premium_data[user_id])
-            if datetime.datetime.now() < expiry:
-                await ctx.send(f"🌟 Your premium is **Active** until: `{expiry.strftime('%Y-%m-%d')}`")
-                return
-        
-        await ctx.send("❌ You don't have an active premium. Use `/buy_premium` to upgrade!")
-
 async def setup(bot):
     await bot.add_cog(PremiumManager(bot))
-        
+    
