@@ -1,55 +1,60 @@
-    @commands.hybrid_command(name="inventory", aliases=["inv", "i"], description="Check your animals and gems")
+import discord
+from discord.ext import commands
+import json
+import os
+
+DB_FILE = 'economy.json'
+
+def load_json():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except:
+                return {}
+    return {}
+
+class Inv(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        # জেমসের তথ্য (যাতে নামগুলো ইনভেন্টরিতে দেখানো যায়)
+        self.gem_names = {
+            "F1": "Forest Gem (C)", "F2": "Forest Gem (U)", "F3": "Forest Gem (E)",
+            "L1": "Luck Gem (C)", "L2": "Luck Gem (U)", "L3": "Luck Gem (E)",
+            "M1": "Mythic Gem (C)", "M2": "Mythic Gem (U)", "M3": "Mythic Gem (E)"
+        }
+
+    @commands.hybrid_command(name="inventory", aliases=["inv", "i"], description="Check your items")
     async def inventory(self, ctx):
         data = load_json()
         user_id = str(ctx.author.id)
 
-        if user_id not in data or (not data[user_id].get("inventory") and not data[user_id].get("gems")):
-            return await ctx.send(f"🎒 | **{ctx.author.display_name}**, your inventory is empty! Go hunt some animals.")
+        if user_id not in data:
+            return await ctx.send("🎒 Your inventory is empty!")
 
         user_data = data[user_id]
         inventory = user_data.get("inventory", {})
         gems = user_data.get("gems", {})
-        
-        # --- ১. এনিমেল সেকশন সাজানো ---
-        animal_list = []
-        if inventory:
-            # সংখ্যা অনুযায়ী বড় থেকে ছোট হিসেবে সাজানো
-            sorted_animals = sorted(inventory.items(), key=lambda x: x[1], reverse=True)
-            for emoji, count in sorted_animals:
-                if count > 0:
-                    animal_list.append(f"{emoji} `x{count}`")
-        
-        animals_str = ", ".join(animal_list) if animal_list else "No animals caught yet."
 
-        # --- ২. জেমস সেকশন সাজানো ---
-        gem_list = []
-        if gems:
-            for code, count in gems.items():
-                if count > 0:
-                    gem_name = self.gems[code]["name"]
-                    gem_list.append(f"● `{code}` **{gem_name}** (Stock: {count})")
-        
-        gems_str = "\n".join(gem_list) if gem_list else "No gems in stock."
+        # প্রাণীদের লিস্ট তৈরি
+        animal_list = [f"{emoji} `x{count}`" for emoji, count in inventory.items() if count > 0]
+        animals_str = ", ".join(animal_list) if animal_list else "No animals"
 
-        # --- ৩. একটিভ বাফ সেকশন ---
-        active_buff = user_data.get("active_buff")
-        if active_buff:
-            buff_status = f"✅ `{active_buff}` **{self.gems[active_buff]['name']}**\n🔋 Uses left: `{user_data['gem_uses']}`"
-        else:
-            buff_status = "❌ No active gem"
+        # জেমসের লিস্ট তৈরি
+        gem_list = [f"● `{code}` {self.gem_names.get(code, 'Gem')} (x{count})" for code, count in gems.items() if count > 0]
+        gems_str = "\n".join(gem_list) if gem_list else "No gems"
 
-        # --- ৪. এমবেড ডিজাইন ---
-        embed = discord.Embed(
-            title=f"🎒 {ctx.author.display_name}'s Global Inventory",
-            color=0x3498db
-        )
-        embed.set_thumbnail(url=ctx.author.display_avatar.url)
+        # একটিভ বাফ
+        active = user_data.get("active_buff")
+        status = f"✅ `{active}` (Uses: {user_data.get('gem_uses', 0)})" if active else "❌ None"
 
-        embed.add_field(name="✨ Active Buff", value=buff_status, inline=False)
-        embed.add_field(name="📦 Gems Collection", value=gems_str, inline=False)
-        embed.add_field(name="🐾 Animals Caught", value=animals_str[:1024], inline=False) # Discord Limit Check
-
-        embed.set_footer(text=f"Balance: {user_data.get('balance', 0)} | Lootboxes: {user_data.get('lootboxes', 0)}")
+        embed = discord.Embed(title=f"🎒 {ctx.author.name}'s Inventory", color=0x3498db)
+        embed.add_field(name="✨ Active Gem", value=status, inline=False)
+        embed.add_field(name="📦 Gems", value=gems_str, inline=False)
+        embed.add_field(name="🐾 Animals", value=animals_str[:1024], inline=False)
         
         await ctx.send(embed=embed)
-      
+
+async def setup(bot):
+    await bot.add_cog(Inv(bot))
+    
