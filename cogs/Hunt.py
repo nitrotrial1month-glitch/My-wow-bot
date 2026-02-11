@@ -3,9 +3,7 @@ from discord.ext import commands
 import random
 import json
 import os
-import asyncio
 
-# --- Global Database Path ---
 DB_FILE = 'economy.json'
 
 def load_json():
@@ -19,115 +17,133 @@ def save_json(data):
     with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
-class HuntSystem(commands.Cog):
+class HuntingSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.cash_emoji = "<:Nova:1453460518764548186>"
         
+        # ১. এনিমেল লিস্ট (সব ক্যাটাগরি)
         self.animals = {
-            "common": ["🐭", "🐹", "🐰", "🐱", "🐶", "🦊", "🐻", "🐼", "🐨", "🐯"],
-            "uncommon": ["🐸", "🐷", "🐮", "🦁", "🐵", "🐒", "🐔", "🐧", "🐦", "🐤"],
-            "rare": ["🦄", "🐴", "🐗", "🦒", "🦓", "🐘", "🦏", "🐫", "🐪", "🦌"],
-            "epic": ["🐍", "🦎", "🦖", "🦕", "🐢", "🐊", "🐙", "🦑", "🐬", "🐳"],
-            "legendary": ["🐉", "🐲", "🦁", "🦅", "🐆", "🦈", "🦍", "🦣", "🦦", "🦥"]
+            "common": ["🐭", "🐹", "🐰", "🐱", "🐶"],
+            "uncommon": ["🐸", "🐷", "🐮", "🦁", "🐵"],
+            "rare": ["🦄", "🐴", "🐗", "🦒", "🐘"],
+            "epic": ["🐍", "🦎", "🦖", "🦕", "🐙"],
+            "legendary": ["🐉", "🐲", "🦅", "🐆", "🦈"]
         }
 
-    @commands.hybrid_command(name="hunt", aliases=["h"], description="Hunt for animals (15s cooldown)")
-    @commands.cooldown(1, 15, commands.BucketType.user) # 15-second cooldown added
+        # ২. জেমস কনফিগ (৩ টাইপ: Forest, Luck, Mythic)
+        self.gems = {
+            "F1": {"name": "Forest Gem (Common)", "type": "count", "power": 2, "uses": 5},
+            "F2": {"name": "Forest Gem (Uncommon)", "type": "count", "power": 4, "uses": 10},
+            "F3": {"name": "Forest Gem (Epic)", "type": "count", "power": 8, "uses": 15},
+            
+            "L1": {"name": "Luck Gem (Common)", "type": "luck", "power": 2, "uses": 5},
+            "L2": {"name": "Luck Gem (Uncommon)", "type": "luck", "power": 4, "uses": 10},
+            "L3": {"name": "Luck Gem (Epic)", "type": "luck", "power": 8, "uses": 15},
+            
+            "M1": {"name": "Mythic Gem (Common)", "type": "mythic", "power": 1.5, "uses": 5},
+            "M2": {"name": "Mythic Gem (Uncommon)", "type": "mythic", "power": 2.5, "uses": 10},
+            "M3": {"name": "Mythic Gem (Epic)", "type": "mythic", "power": 5, "uses": 15},
+        }
+
+    # --- ৩. মেইন হান্ট কমান্ড ---
+    @commands.hybrid_command(name="hunt", aliases=["h"])
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def hunt(self, ctx):
-        user_id = str(ctx.author.id)
         data = load_json()
+        user_id = str(ctx.author.id)
 
         if user_id not in data:
-            data[user_id] = {"balance": 0, "inventory": {}, "gems": {"common": 0, "epic": 0, "legendary": 0}, "active_buff": None}
+            data[user_id] = {"balance": 100, "inventory": {}, "gems": {}, "active_buff": None, "gem_uses": 0}
         
         user_data = data[user_id]
+        active_code = user_data.get("active_buff")
         
-        if user_data.get("balance", 0) < 10:
-            ctx.command.reset_cooldown(ctx)
-            return await ctx.send(f"❌ You need at least 10 {self.cash_emoji} to hunt!", ephemeral=True)
+        multiplier = 1
+        luck_boost = 1.0
+        durability_msg = ""
 
-        # Deduct Balance
-        user_data["balance"] -= 10
-        await ctx.defer()
+        # জেম পাওয়ার প্রোসেসিং
+        if active_code in self.gems:
+            gem_info = self.gems[active_code]
+            if gem_info["type"] == "count":
+                multiplier = gem_info["power"]
+            elif gem_info["type"] == "luck":
+                luck_boost = gem_info["power"]
+            elif gem_info["type"] == "mythic":
+                multiplier = gem_info["power"]
+                luck_boost = gem_info["power"]
+
+            user_data["gem_uses"] -= 1
+            if user_data["gem_uses"] <= 0:
+                user_data["active_buff"] = None
+                durability_msg = f"\n⚠️ Your Gem `{active_code}` has broken!"
+            else:
+                durability_msg = f"\n🔋 `{active_code}` uses left: {user_data['gem_uses']}"
+
+        # হান্টিং লজিক (লাক বুস্ট সহ)
+        chance = random.random() * 100 / luck_boost
         
-        msg = await ctx.send("🏹 **Searching the wilderness...**")
-        await asyncio.sleep(1.2)
+        if chance <= 1: cat = "legendary"
+        elif chance <= 5: cat = "epic"
+        elif chance <= 15: cat = "rare"
+        elif chance <= 35: cat = "uncommon"
+        else: cat = "common"
 
-        # --- New Probability Logic ---
-        # Legendary: 1%, Epic: 3%, Rare: 6%, Uncommon: 20%, Common: 70%
-        rand = random.random() * 100
-        if rand <= 1: category = "legendary"
-        elif rand <= 4: category = "epic"
-        elif rand <= 10: category = "rare"
-        elif rand <= 30: category = "uncommon"
-        else: category = "common"
+        animal = random.choice(self.animals[cat])
+        total_caught = int(1 * multiplier)
 
-        animal = random.choice(self.animals[category])
-        
-        # Buff Calculation
-        count = 1
-        active_buff = user_data.get("active_buff")
-        if active_buff == "legendary": count = 10
-        elif active_buff == "epic": count = 5
-        elif active_buff == "common": count = 2
-        
-        user_data["active_buff"] = None # Reset buff
-
-        # Update Inventory
+        # ইনভেন্টরি সেভ
         inventory = user_data.get("inventory", {})
-        inventory[animal] = inventory.get(animal, 0) + count
+        inventory[animal] = inventory.get(animal, 0) + total_caught
         user_data["inventory"] = inventory
         save_json(data)
 
-        # --- Embed Design ---
-        embed = discord.Embed(color=0x2b2d31)
-        header = f"🌿 | **{ctx.author.display_name}** spent 10 {self.cash_emoji} and"
-        main_text = f"caught a **{category.upper()}** {animal} **x{count}**!"
-        
-        embed.description = f"{header}\n{main_text}"
-        
-        if active_buff:
-            embed.set_footer(text=f"💎 Buff Active: {active_buff.capitalize()} Gem applied!")
-        else:
-            embed.set_footer(text=f"New Balance: {user_data['balance']:,}")
+        await ctx.send(f"🌿 | **{ctx.author.display_name}** caught a **{cat.upper()}** {animal} **x{total_caught}**!{durability_msg}")
 
-        await msg.edit(content=None, embed=embed)
-
-    # --- Custom Cooldown Message ---
-    @hunt.error
-    async def hunt_error(self, ctx, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            retry_after = f"{error.retry_after:.2f}"
-            msg = f"**⏱ | {ctx.author.display_name}**! Slow down and try the command again in **{retry_after}s**"
-            
-            if ctx.interaction:
-                await ctx.interaction.response.send_message(msg, ephemeral=True)
-            else:
-                await ctx.send(msg, delete_after=5)
-
-    @commands.hybrid_command(name="usegem", description="Activate a gem for multipliers!")
-    async def use_gem(self, ctx, gem_type: str):
-        user_id = str(ctx.author.id)
+    # --- ৪. জেম ব্যবহার কমান্ড ---
+    @commands.hybrid_command(name="use")
+    async def use_gem(self, ctx, code: str):
         data = load_json()
-        
-        gem_type = gem_type.lower()
-        if gem_type not in ["common", "epic", "legendary"]:
-            return await ctx.send("❌ Invalid type! Use: `common`, `epic`, or `legendary`", ephemeral=True)
-        
-        user_data = data.get(user_id)
-        if not user_data or user_data.get("gems", {}).get(gem_type, 0) <= 0:
-            return await ctx.send(f"❌ You don't have any `{gem_type}` gems!", ephemeral=True)
+        user_id = str(ctx.author.id)
+        code = code.upper()
+
+        if code not in self.gems:
+            return await ctx.send("❌ Invalid Gem Code!")
+
+        user_data = data.get(user_id, {})
+        if user_data.get("gems", {}).get(code, 0) <= 0:
+            return await ctx.send(f"❌ You don't have Gem `{code}`!")
 
         if user_data.get("active_buff"):
-            return await ctx.send(f"⚠️ You already have an active buff!", ephemeral=True)
+            return await ctx.send(f"⚠️ Already using `{user_data['active_buff']}`!")
 
-        user_data["gems"][gem_type] -= 1
-        user_data["active_buff"] = gem_type
+        user_data["gems"][code] -= 1
+        user_data["active_buff"] = code
+        user_data["gem_uses"] = self.gems[code]["uses"]
         save_json(data)
 
-        await ctx.send(f"💎 **{gem_type.capitalize()} Gem** activated! Your next hunt will yield more animals.")
+        await ctx.send(f"💎 | Activated **{self.gems[code]['name']}** for **{user_data['gem_uses']}** hunts!")
+
+    # --- ৫. লুটবক্স ওপেন কমান্ড ---
+    @commands.hybrid_command(name="open", aliases=["op", "lb"])
+    async def open_box(self, ctx):
+        data = load_json()
+        user_id = str(ctx.author.id)
+
+        if data.get(user_id, {}).get("lootboxes", 0) <= 0:
+            return await ctx.send(f"**{ctx.author.display_name}**, no boxes! 📦")
+
+        # রেন্ডমলি জেম তৈরি (Tier & Type)
+        tier = random.choices(["1", "2", "3"], weights=[70, 25, 5])[0]
+        g_type = random.choices(["F", "L", "M"], weights=[45, 45, 10])[0]
+        chosen_code = f"{g_type}{tier}"
+
+        data[user_id]["lootboxes"] -= 1
+        if "gems" not in data[user_id]: data[user_id]["gems"] = {}
+        data[user_id]["gems"][chosen_code] = data[user_id]["gems"].get(chosen_code, 0) + 1
+        save_json(data)
+
+        await ctx.send(f"📦 | **{ctx.author.display_name}**, you found: **{self.gems[chosen_code]['name']}** (`{chosen_code}`)")
 
 async def setup(bot):
-    await bot.add_cog(HuntSystem(bot))
-        
+    await bot.add_cog(HuntingSystem(bot))
