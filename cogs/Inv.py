@@ -25,7 +25,7 @@ class Inv(commands.Cog):
             "M1": "Mythic Gem (Common)", "M2": "Mythic Gem (Uncommon)", "M3": "Mythic Gem (Epic)"
         }
 
-    @commands.hybrid_command(name="inventory", aliases=["inv", "i"], description="Check your gems and animals")
+    @commands.hybrid_command(name="inventory", aliases=["inv"], description="Check your gems and animals")
     async def inventory(self, ctx):
         data = load_json()
         user_id = str(ctx.author.id)
