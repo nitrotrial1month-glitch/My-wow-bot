@@ -1,117 +1,79 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 from utils import load_config, save_config
+
+# --- এডিট করার জন্য পপ-আপ ফর্ম (Modal) ---
+class WelcomeEditModal(discord.ui.Modal, title='Edit Welcome Settings'):
+    title_input = discord.ui.TextInput(label='Welcome Title', placeholder='e.g. Welcome to Our Server!', required=False)
+    msg_input = discord.ui.TextInput(label='Message', style=discord.TextStyle.paragraph, placeholder='Use {member}, {server}, {count}', required=False)
+    image_input = discord.ui.TextInput(label='GIF/Image URL', placeholder='https://example.com/welcome.gif', required=False)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        config = load_config()
+        if self.title_input.value: config["welcome"]["title"] = self.title_input.value
+        if self.msg_input.value: config["welcome"]["description"] = self.msg_input.value
+        if self.image_input.value: config["welcome"]["image_url"] = self.image_input.value
+        
+        save_config(config)
+        await interaction.response.send_message("✅ Welcome settings updated successfully!", ephemeral=True)
+
+# --- ড্যাশবোর্ডের বাটন ইন্টারফেস ---
+class DashboardView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Edit Content", style=discord.ButtonStyle.primary, emoji="📝")
+    async def edit_content(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(WelcomeEditModal())
+
+    @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, emoji="🔄")
+    async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # ড্যাশবোর্ড আপডেট করার লজিক
+        await interaction.response.edit_message(embed=self.create_embed())
+
+    def create_embed(self):
+        config = load_config()
+        w = config.get("welcome", {})
+        embed = discord.Embed(title="🖼️ Welcome Dashboard", color=0x2b2d31)
+        embed.add_field(name="Status", value="🟢 ON" if w.get("enabled") else "🔴 OFF", inline=True)
+        embed.add_field(name="Channel", value=f"<#{w.get('channel_id')}>" if w.get('channel_id') else "Not Set", inline=True)
+        embed.add_field(name="Title", value=w.get("title", "Welcome!"), inline=False)
+        if w.get("image_url"): embed.set_image(url=w.get("image_url"))
+        return embed
 
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ================= ইভেন্ট: যখন নতুন মেম্বার জয়েন করবে =================
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
+    # --- ১. স্লাস কমান্ড: ওয়েলকাম অন (On) ---
+    @app_commands.command(name="welcome_on", description="Enable the welcome system")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def welcome_on(self, interaction: discord.Interaction):
         config = load_config()
-        welcome_data = config.get("welcome", {})
-
-        # ১. অন/অফ চেক (সবার আগে)
-        # যদি enabled 'False' হয়, তবে ফাংশন এখানেই থামবে
-        if not welcome_data.get("enabled", True): 
-            return 
-
-        # ২. অটো-রোল দেওয়া
-        role_id = config.get("auto_role_id")
-        if role_id:
-            role = member.guild.get_role(int(role_id))
-            if role:
-                try: await member.add_roles(role)
-                except: pass
-
-        # ৩. ওয়েলকাম মেসেজ পাঠানো
-        channel_id = welcome_data.get("channel_id")
-        if channel_id:
-            channel = self.bot.get_channel(int(channel_id))
-            if channel:
-                description = welcome_data.get("description", "Welcome {member}!").replace("{member}", member.mention)
-                description = description.replace("{name}", member.name)
-                description = description.replace("{server}", member.guild.name)
-                description = description.replace("{count}", str(member.guild.member_count))
-
-                embed = discord.Embed(
-                    title=welcome_data.get("title", "Welcome!"),
-                    description=description,
-                    color=welcome_data.get("color", 0x00ff00)
-                )
-                
-                if welcome_data.get("image_url"):
-                    embed.set_image(url=welcome_data["image_url"])
-                
-                embed.set_thumbnail(url=member.display_avatar.url)
-                embed.set_footer(text=f"Member #{member.guild.member_count}")
-
-                try: await channel.send(content=f"Hey {member.mention}, Welcome!", embed=embed)
-                except: pass
-
-    # ================= কমান্ড গ্রুপ =================
-
-    @commands.hybrid_group(name="setwelcome", description="Setup welcome settings")
-    @commands.has_permissions(administrator=True)
-    async def setwelcome(self, ctx):
-        if ctx.invoked_subcommand is None:
-            await ctx.send("❌ Usage: `toggle`, `status`, `channel`, `msg`, `image`")
-
-    # ➤ 1. অন/অফ সুইচ (Toggle)
-    @setwelcome.command(name="toggle", description="Turn welcome system ON or OFF")
-    async def toggle_welcome(self, ctx, status: bool):
-        config = load_config()
-        # যদি 'welcome' কি (key) না থাকে তবে তৈরি করবে
-        if "welcome" not in config: config["welcome"] = {}
-        
-        config["welcome"]["enabled"] = status
+        config["welcome"]["enabled"] = True
         save_config(config)
-        
-        state = "🟢 ON" if status else "🔴 OFF"
-        await ctx.send(f"✅ Welcome System is now **{state}**")
+        await interaction.response.send_message("✅ Welcome system has been **Enabled**.")
 
-    # ➤ 2. ড্যাশবোর্ড / স্ট্যাটাস চেক (Dashboard)
-    @setwelcome.command(name="dashboard", aliases=["status", "settings"], description="View current welcome settings")
-    async def show_dashboard(self, ctx):
+    # --- ২. স্লাস কমান্ড: ওয়েলকাম অফ (Off) ---
+    @app_commands.command(name="welcome_off", description="Disable the welcome system")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def welcome_off(self, interaction: discord.Interaction):
         config = load_config()
-        w = config.get("welcome", {})
-        
-        # ডাটা প্রিপারেশন
-        is_on = "🟢 Enabled" if w.get("enabled", True) else "🔴 Disabled"
-        channel = f"<#{w.get('channel_id')}>" if w.get('channel_id') else "❌ Not Set"
-        role = f"<@&{config.get('auto_role_id')}>" if config.get('auto_role_id') else "❌ Not Set"
-        img_status = "✅ Set" if w.get('image_url') else "❌ Not Set"
-
-        # ড্যাশবোর্ড এমবেড
-        embed = discord.Embed(title="⚙️ Welcome Settings Dashboard", color=0x2b2d31)
-        embed.add_field(name="System Status", value=is_on, inline=True)
-        embed.add_field(name="Channel", value=channel, inline=True)
-        embed.add_field(name="Auto Role", value=role, inline=True)
-        embed.add_field(name="Image", value=img_status, inline=True)
-        embed.add_field(name="Message Preview", value=w.get('description', 'Default Message')[:100] + "...", inline=False)
-        
-        await ctx.send(embed=embed)
-
-    # ➤ 3. অন্যান্য সেটআপ কমান্ড
-    @setwelcome.command(name="channel", description="Set welcome channel")
-    async def set_channel(self, ctx, channel: discord.TextChannel):
-        config = load_config()
-        if "welcome" not in config: config["welcome"] = {}
-        config["welcome"]["channel_id"] = channel.id
+        config["welcome"]["enabled"] = False
         save_config(config)
-        await ctx.send(f"✅ Welcome channel set to {channel.mention}")
+        await interaction.response.send_message("✅ Welcome system has been **Disabled**.")
 
-    @setwelcome.command(name="msg", description="Set welcome message")
-    async def set_msg(self, ctx, *, message: str):
-        config = load_config()
-        config["welcome"]["description"] = message
-        save_config(config)
-        await ctx.send(f"✅ Welcome message updated!")
+    # --- ৩. স্লাস কমান্ড: ড্যাশবোর্ড (Dashboard) ---
+    @app_commands.command(name="welcome_dashboard", description="Full control over welcome settings")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def welcome_dashboard(self, interaction: discord.Interaction):
+        view = DashboardView()
+        await interaction.response.send_message(embed=view.create_embed(), view=view)
 
-    @setwelcome.command(name="image", description="Set welcome image URL")
-    async def set_image(self, ctx, url: str):
-        config = load_config()
+async def setup(bot):
+    await bot.add_cog(Welcome(bot))
+    config = load_config()
         config["welcome"]["image_url"] = url
         save_config(config)
         await ctx.send(f"✅ Welcome image updated!")
