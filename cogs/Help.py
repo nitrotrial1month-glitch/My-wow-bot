@@ -67,7 +67,7 @@ class CustomHelp(commands.Cog):
 
     # hybrid_command এর কারণে এটি !help এবং /help দুটোতেই কাজ করবে
     # aliases=["h", "cmds"] এর কারণে !h বা !cmds দিলেও কাজ করবে
-    @commands.hybrid_command(name="help", description="📜 Show all commands for Wow", aliases=["h", "cmds", "commands"])
+    @commands.hybrid_command(name="help", description="📜 Show all commands for Wow", aliases=["cmds", "commands"])
     async def help(self, ctx):
         embed = discord.Embed(
             title="🌟 Wow Help Menu",
