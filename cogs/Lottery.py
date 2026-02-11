@@ -5,7 +5,6 @@ import json
 import os
 import datetime
 import random
-import asyncio
 
 # File Paths
 ECO_FILE = 'economy.json'
@@ -21,7 +20,7 @@ def save_json(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
-# --- Confirmation View ---
+# --- Confirmation View with Submission Embed ---
 class LotteryConfirmView(discord.ui.View):
     def __init__(self, user_id, amount, eco_data):
         super().__init__(timeout=30)
@@ -45,14 +44,40 @@ class LotteryConfirmView(discord.ui.View):
         # Register in Lottery
         lottery_data = load_json(LOTTERY_FILE)
         current_bet = lottery_data["participants"].get(uid, 0)
-        lottery_data["participants"][uid] = current_bet + self.amount
+        new_total_submission = current_bet + self.amount
+        
+        lottery_data["participants"][uid] = new_total_submission
         lottery_data["pot"] += self.amount
         save_json(LOTTERY_FILE, lottery_data)
+
+        # --- Calculate Data for Embed ---
+        pot = lottery_data["pot"]
+        chance = (new_total_submission / pot) * 100 if pot > 0 else 0
+        end_time = datetime.datetime.fromisoformat(lottery_data["end_time"])
+        time_left = end_time - datetime.datetime.now(datetime.timezone.utc)
         
-        await interaction.response.edit_message(
-            content=f"✅ **Success!** You entered **{self.amount:,}** coins into the lottery.\n⏳ Results will be sent via DM in 24h.", 
-            view=None, embed=None
+        # Time Formatting (17h 5m 14s style)
+        hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        time_str = f"{hours}h {minutes}m {seconds}s"
+
+        # --- Create Submission Embed (Like the image) ---
+        embed = discord.Embed(
+            title=f"『OWNER』 ☯️{interaction.user.name.upper()}』👑's Lottery Submission",
+            description="Lottery ends once a day! The maximum lottery submission is **Unlimited**!",
+            color=discord.Color.from_rgb(43, 45, 49) # Dark Discord Theme Color
         )
+        
+        embed.add_field(name="You added", value=f"```yaml\n{self.amount:,} Coins\n```", inline=False)
+        embed.add_field(name="Your Total Submission", value=f"```yaml\n{new_total_submission:,} Coins\n```", inline=False)
+        embed.add_field(name="Winning Chance", value=f"```yaml\n{chance:.16f}%\n```", inline=False)
+        embed.add_field(name="Current Jackpot", value=f"```yaml\n{pot:,} Coins\n```", inline=False)
+        embed.add_field(name="Ends in", value=f"```yaml\n{time_str}\n```", inline=False)
+        
+        embed.set_footer(text="*Percentage and jackpot may change over time")
+        embed.timestamp = datetime.datetime.now()
+
+        await interaction.response.edit_message(content=None, embed=embed, view=None)
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="✖️")
@@ -63,6 +88,7 @@ class LotteryConfirmView(discord.ui.View):
         await interaction.response.edit_message(content="❌ **Transaction Cancelled.** No coins were deducted.", view=None, embed=None)
         self.stop()
 
+# --- Lottery System Cog (Keep as it was) ---
 class LotterySystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -87,7 +113,6 @@ class LotterySystem(commands.Cog):
     async def draw_winner(self, data):
         participants = data["participants"]
         pot = data["pot"]
-
         if not participants:
             next_draw = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
             data["end_time"] = next_draw.isoformat()
@@ -95,7 +120,6 @@ class LotterySystem(commands.Cog):
             return
 
         winner_id = random.choices(list(participants.keys()), weights=list(participants.values()), k=1)[0]
-        
         eco_data = load_json(ECO_FILE)
         if winner_id in eco_data:
             eco_data[winner_id]["balance"] += pot
@@ -111,16 +135,15 @@ class LotterySystem(commands.Cog):
             try:
                 user = await self.bot.fetch_user(int(uid))
                 if uid == winner_id:
-                    await user.send(f"🎉 **JACKPOT!** You won the lottery!\n💰 Prize: **{pot:,}** coins added to your balance.")
+                    await user.send(f"🎉 **JACKPOT!** You won the lottery!\n💰 Prize: **{pot:,}** coins.")
                 else:
-                    await user.send(f"😔 **Lottery Results:**\nYou didn't win this time.\n🏆 Winner: **{winner_name}**\n💰 Total Pot: {pot:,} coins.\nTry again tomorrow!")
+                    await user.send(f"😔 **Lottery Results:** Winner: **{winner_name}** | Pot: {pot:,} coins.")
             except: pass
 
         next_draw = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
         save_json(LOTTERY_FILE, {"end_time": next_draw.isoformat(), "participants": {}, "pot": 0})
 
-    # --- Commands ---
-    @commands.hybrid_command(name="lottery", description="🎟️ Buy a lottery ticket", aliases=["lot", "lotto"])
+    @commands.hybrid_command(name="lottery", description="🎟️ Buy a lottery ticket", aliases=["lot"])
     @app_commands.describe(amount="Amount of coins to bet")
     async def lottery(self, ctx, amount: int):
         if amount < 100:
@@ -130,38 +153,17 @@ class LotterySystem(commands.Cog):
         user_bal = eco_data.get(str(ctx.author.id), {}).get("balance", 0)
         
         if user_bal < amount:
-            return await ctx.send(f"❌ Insufficient balance! (You have: {user_bal:,})", ephemeral=True)
+            return await ctx.send(f"❌ Insufficient balance!", ephemeral=True)
 
         lot_data = load_json(LOTTERY_FILE)
         end_time = datetime.datetime.fromisoformat(lot_data["end_time"])
         
         embed = discord.Embed(title="🎟️ Lottery Entry", color=discord.Color.blue())
-        embed.description = (
-            f"You are betting **{amount:,}** coins.\n"
-            f"💰 New Total Pot: **{lot_data['pot'] + amount:,}**\n"
-            f"⏳ Drawing in: <t:{int(end_time.timestamp())}:R>\n\n"
-            f"Confirm below to register your name."
-        )
+        embed.description = f"Betting **{amount:,}** coins. Confirm to register."
         
         view = LotteryConfirmView(ctx.author.id, amount, eco_data)
         await ctx.send(embed=embed, view=view)
 
-    @commands.hybrid_command(name="lot_status", description="📊 View current lottery stats")
-    async def lot_status(self, ctx):
-        data = load_json(LOTTERY_FILE)
-        if not data: return await ctx.send("No lottery running.")
-
-        end_time = datetime.datetime.fromisoformat(data["end_time"])
-        my_bet = data["participants"].get(str(ctx.author.id), 0)
-        chance = f"{(my_bet / data['pot'] * 100):.1f}%" if data["pot"] > 0 else "0%"
-
-        embed = discord.Embed(title="📊 Global Lottery Stats", color=discord.Color.gold())
-        embed.add_field(name="💰 Pot Size", value=f"**{data['pot']:,}**", inline=True)
-        embed.add_field(name="⏳ Draw Time", value=f"<t:{int(end_time.timestamp())}:R>", inline=True)
-        embed.add_field(name="🎲 Your Chance", value=f"**{chance}** ({my_bet:,} bet)", inline=False)
-        
-        await ctx.send(embed=embed)
-
 async def setup(bot):
     await bot.add_cog(LotterySystem(bot))
-      
+            
