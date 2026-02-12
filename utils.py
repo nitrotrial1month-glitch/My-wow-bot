@@ -212,15 +212,15 @@ class TierSelectView(View):
         self.p_type = p_type
         self.target_id = target_id
 
-    @discord.ui.button(label="Basic (50৳)", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Basic (50₹)", style=discord.ButtonStyle.secondary)
     async def basic(self, interaction, button):
         await interaction.response.send_modal(PaymentModal(self.p_type, "basic", self.target_id))
 
-    @discord.ui.button(label="Pro (100৳)", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Pro (100₹)", style=discord.ButtonStyle.primary)
     async def pro(self, interaction, button):
         await interaction.response.send_modal(PaymentModal(self.p_type, "pro", self.target_id))
     
-    @discord.ui.button(label="Ultra (200৳)", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Ultra (200₹)", style=discord.ButtonStyle.danger)
     async def ultra(self, interaction, button):
         await interaction.response.send_modal(PaymentModal(self.p_type, "ultra", self.target_id))
 
