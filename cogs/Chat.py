@@ -65,7 +65,7 @@ class AIChat(commands.Cog):
                 except Exception as e:
                     # এখন আর ওয়ার্নিং আসবে না, কিন্তু অন্য কোনো এরর হলে দেখাবে
                     print(f"❌ GenAI Error: {e}")
-                    await message.add_reaction("😵‍💫")
+                    
 
 async def setup(bot):
     await bot.add_cog(AIChat(bot))
