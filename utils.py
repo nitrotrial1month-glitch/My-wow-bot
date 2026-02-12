@@ -11,9 +11,6 @@ import datetime
 CONFIG_FILE = 'config.json'
 OWNER_ID = 1311355680640208926  # আপনার Discord ID
 
-# শুধু সার্ভার প্রাইস থাকবে
-PREMIUM_PRICE = "100 Taka/Month"
-
 def load_config():
     """ডাটাবেস লোড করা (Legacy Support সহ)"""
     default_data = {
@@ -26,7 +23,6 @@ def load_config():
         
         # --- ONLY SERVER PREMIUM ---
         "premium_servers": {},
-        # (user premium সেকশন বাদ দেওয়া হলো)
         "giveaway_settings": {} 
     }
 
@@ -50,14 +46,13 @@ def save_config(data):
         json.dump(data, f, indent=4)
 
 # ==========================================
-# 2. CORE LOGIC: ONLY SERVER CHECK
+# 2. CORE LOGIC: SERVER CHECK & ACTIVATION
 # ==========================================
 
 def get_theme_color(guild_id):
     """
     শুধুমাত্র সার্ভার আইডি চেক করবে।
-    Premium Server = Gold (🟡)
-    Free Server = Blue (🔵)
+    Premium = Gold (🟡), Free = Blue (🔵)
     """
     if not guild_id: return discord.Color.blue()
     
@@ -72,7 +67,7 @@ def get_theme_color(guild_id):
             if now < expiry:
                 return discord.Color.gold() # 🟡 Premium
         except:
-            pass # ডেট এরর হলে ইগনোর করবে
+            pass 
 
     return discord.Color.blue() # 🔵 Free
 
@@ -93,6 +88,29 @@ def activate_server_premium(guild_id, days=30):
 # 3. UI VIEWS (Only Server Options)
 # ==========================================
 
+# --- ১. অ্যাডমিন অ্যাপ্রুভাল বাটন (যা আপনার DM এ যাবে) ---
+class AdminApprovalView(View):
+    def __init__(self, target_id):
+        super().__init__(timeout=None)
+        self.target_id = target_id
+
+    @discord.ui.button(label="✅ Approve Server", style=discord.ButtonStyle.green)
+    async def approve(self, interaction: discord.Interaction, button: Button):
+        # প্রিমিয়াম চালু করা
+        activate_server_premium(self.target_id)
+        
+        # অ্যাডমিনকে কনফার্মেশন
+        await interaction.response.send_message(f"✅ **Server Premium** Activated! (Server ID: `{self.target_id}`)")
+        
+        # বাটনগুলো ডিজেবল করা (যাতে দুবার চাপ না লাগে)
+        self.stop()
+
+    @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red)
+    async def reject(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message(f"❌ Request Rejected for ID: `{self.target_id}`")
+        self.stop()
+
+# --- ২. পেমেন্ট ইনফো মডাল (ফর্ম) ---
 class PaymentModal(Modal, title="Buy Server Premium"):
     def __init__(self):
         super().__init__()
@@ -102,8 +120,10 @@ class PaymentModal(Modal, title="Buy Server Premium"):
         self.add_item(self.method)
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message("✅ পেমেন্ট ডিটেইলস অ্যাডমিনের কাছে পাঠানো হয়েছে।", ephemeral=True)
+        # ১. ইউজারকে মেসেজ (চ্যানেলে)
+        await interaction.response.send_message("✅ পেমেন্ট ডিটেইলস অ্যাডমিনের কাছে পাঠানো হয়েছে! অনুগ্রহ করে অপেক্ষা করুন।", ephemeral=True)
         
+        # ২. অ্যাডমিনকে মেসেজ (DM এ)
         owner = interaction.client.get_user(OWNER_ID)
         if owner:
             embed = discord.Embed(title="🏰 New Server Premium Request", color=discord.Color.gold())
@@ -112,7 +132,21 @@ class PaymentModal(Modal, title="Buy Server Premium"):
             embed.add_field(name="Server Name", value=f"`{interaction.guild.name}`", inline=True)
             embed.add_field(name="TrxID", value=f"`{self.trx_id.value}`", inline=False)
             embed.add_field(name="Method", value=f"`{self.method.value}`", inline=False)
+            embed.set_footer(text="Use buttons below to Approve or Reject")
             
+            # অ্যাডমিন ভিউ পাঠানো
+            await owner.send(embed=embed, view=AdminApprovalView(interaction.guild.id))
+
+# --- ৩. মেইন বাটন (যা ইউজার দেখবে) ---
+class PremiumSelectionView(View):
+    def __init__(self):
+        super().__init__()
+
+    # শুধুমাত্র একটাই বাটন: Buy Server Premium
+    @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="👑")
+    async def buy_server(self, interaction: discord.Interaction, button: Button):
+        # মডাল ওপেন হবে
+        await interaction.response.send_modal(PaymentModal())
             await owner.send(embed=embed, view=AdminApprovalView(interaction.guild.id))
 
 class AdminApprovalView(View):
