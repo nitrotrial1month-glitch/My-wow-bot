@@ -184,7 +184,7 @@ class AdminActionView(View):
 class PaymentModal(Modal):
     def __init__(self, p_type, tier, target_id):
         price = TIER_INFO[tier]["price"]
-        super().__init__(title=f"Pay {price} BDT")
+        super().__init__(title=f"Pay {price} RS")
         self.p_type = p_type
         self.tier = tier
         self.target_id = target_id
