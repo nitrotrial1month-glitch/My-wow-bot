@@ -1,18 +1,26 @@
 import discord
 from discord.ext import commands
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+import os
 import random
 import asyncio
+import warnings
+
+# --- 🚫 লাল ওয়ার্নিং লুকানোর কোড ---
+warnings.filterwarnings("ignore") 
+# ---------------------------------
 
 # আপনার API Key
 GOOGLE_API_KEY = "AIzaSyAqjoitOuE-4XyLBLWzK_6XqBrgmCLVE8k"
 
-# ক্লায়েন্ট সেটআপ
+# কনফিগারেশন
 try:
-    client = genai.Client(api_key=GOOGLE_API_KEY)
+    genai.configure(api_key=GOOGLE_API_KEY)
 except Exception as e:
-    print(f"❌ API Client Error: {e}")
+    print(f"❌ API Error: {e}")
+
+# মডেল সেটআপ
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 class AIChat(commands.Cog):
     def __init__(self, bot):
@@ -20,15 +28,14 @@ class AIChat(commands.Cog):
         self.reactions = ["🔥", "👀", "🤖", "⚡", "😂", "🤔", "👋"]
         self.system_prompt = (
             "You are a helpful and friendly Discord bot named 'Wow'. "
-            "Reply in Bengali or English based on the user's language. "
-            "Keep answers short (max 2 sentences), funny, and engaging."
+            "Reply in Bengali or English. Keep answers short and funny."
         )
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot: return
 
-        # ১. ক্লিন মেসেজ তৈরি
+        # ১. ক্লিন মেসেজ
         user_message = message.content.replace(f'<@!{self.bot.user.id}>', '').replace(f'<@{self.bot.user.id}>', '').strip()
 
         # ২. ট্রিগার কন্ডিশন
@@ -50,7 +57,6 @@ class AIChat(commands.Cog):
         # ৪. চ্যাটিং লজিক
         if (is_mentioned and user_message) or is_reply or is_named:
             
-            # রেন্ডম রিঅ্যাকশন
             try: await message.add_reaction(random.choice(self.reactions))
             except: pass
 
@@ -59,44 +65,21 @@ class AIChat(commands.Cog):
                     if not user_message: user_message = message.content
                     full_prompt = f"{self.system_prompt}\nUser: {user_message}\nWow:"
 
-                    # --- MULTI-MODEL TRY LOGIC ---
-                    # আমরা এক এক করে ৩টি মডেল ট্রাই করব। যেটা কাজ করবে সেটাই উত্তর দেবে।
-                    models_to_try = [
-                        "gemini-2.0-flash",       # লেটেস্ট এবং ফাস্ট
-                        "gemini-1.5-flash",       # স্ট্যান্ডার্ড
-                        "gemini-1.5-flash-002",   # অল্টারনেটিভ ভার্সন
-                        "gemini-1.5-pro"          # পাওয়ারফুল ব্যাকআপ
-                    ]
-
-                    response_text = None
-
-                    for model_name in models_to_try:
-                        try:
-                            print(f"🔄 Trying model: {model_name}...") # কনসোলে দেখাবে কোন মডেল ট্রাই করছে
-                            response = await client.aio.models.generate_content(
-                                model=model_name,
-                                contents=full_prompt,
-                                config=types.GenerateContentConfig(
-                                    temperature=0.9,
-                                    max_output_tokens=150,
-                                )
-                            )
-                            response_text = response.text
-                            print(f"✅ Success with: {model_name}")
-                            break # সফল হলে লুপ ব্রেক করবে
-                        except Exception as e:
-                            print(f"⚠️ Failed {model_name}: {e}")
-                            continue # ফেইল হলে পরের মডেল ট্রাই করবে
-
-                    # যদি সব মডেল ফেইল করে
-                    if response_text:
-                        await message.reply(response_text, mention_author=False)
-                    else:
-                        await message.reply("😵‍💫 আমার ব্রেইন কানেক্ট হচ্ছে না! (All models failed)", mention_author=False)
+                    # API কল (Async)
+                    response = await model.generate_content_async(full_prompt)
+                    
+                    bot_reply = response.text
+                    
+                    # মেসেজ বেশি বড় হলে ছোট করা
+                    if len(bot_reply) > 2000:
+                        bot_reply = bot_reply[:1990] + "..."
+                        
+                    await message.reply(bot_reply, mention_author=False)
 
                 except Exception as e:
-                    print(f"❌ Critical Error: {e}")
-                    await message.channel.send(f"⚠️ Error: {e}")
+                    print(f"❌ Error: {e}")
+                    await message.reply("😵‍💫 আমার ব্রেইন কানেক্ট হচ্ছে না! একটু পরে চেষ্টা করো।", mention_author=False)
 
 async def setup(bot):
     await bot.add_cog(AIChat(bot))
+    
