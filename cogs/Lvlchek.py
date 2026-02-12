@@ -22,7 +22,7 @@ class LevelCheck(commands.Cog):
         return 50 * (level ** 2) + 100
 
     # --- LEVEL CHECK COMMAND ---
-    @commands.hybrid_command(name="lvl", description="📊 Check your current global level", aliases=["rank", "level"])
+    @commands.hybrid_command(name="lvl", description="📊 Check your current global level", aliases=["exp", "level"])
     async def lvl(self, ctx, member: discord.Member = None):
         user = member or ctx.author
         uid = str(user.id)
