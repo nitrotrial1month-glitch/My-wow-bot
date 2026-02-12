@@ -4,82 +4,108 @@ import google.generativeai as genai
 import os
 import random
 import asyncio
-import warnings
 
-# --- 🚫 লাল ওয়ার্নিং লুকানোর কোড ---
-warnings.filterwarnings("ignore") 
-# ---------------------------------
+# ENV থেকে API KEY নেবে (Railway Safe)
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# আপনার API Key
-GOOGLE_API_KEY = "AIzaSyAqjoitOuE-4XyLBLWzK_6XqBrgmCLVE8k"
+if not GOOGLE_API_KEY:
+    raise ValueError("GOOGLE_API_KEY is not set!")
 
-# কনফিগারেশন
-try:
-    genai.configure(api_key=GOOGLE_API_KEY)
-except Exception as e:
-    print(f"❌ API Error: {e}")
+genai.configure(api_key=GOOGLE_API_KEY)
 
-# মডেল সেটআপ
-model = genai.GenerativeModel('gemini-1.5-flash')
+# ─── INTENTS ─────────────────────────────
+intents = discord.Intents.default()
+intents.message_content = True
+intents.messages = True
+intents.guilds = True
 
 class AIChat(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.reactions = ["🔥", "👀", "🤖", "⚡", "😂", "🤔", "👋"]
+
         self.system_prompt = (
             "You are a helpful and friendly Discord bot named 'Wow'. "
-            "Reply in Bengali or English. Keep answers short and funny."
+            "Reply in the SAME language as the user (Bengali/English/Hindi). "
+            "Keep replies short, fun, and engaging."
         )
 
+        self.backup_models = [
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-1.0-pro",
+            "gemini-pro"
+        ]
+
+    def get_smart_response(self, full_prompt: str) -> str:
+        for model_name in self.backup_models:
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(full_prompt)
+                return response.text
+            except Exception as e:
+                print(f"⚠️ {model_name} failed: {e}")
+                continue
+
+        return "❌ Sorry! My brain is reloading. Try again later 😵‍💫"
+
     @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot: return
+    async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
 
-        # ১. ক্লিন মেসেজ
-        user_message = message.content.replace(f'<@!{self.bot.user.id}>', '').replace(f'<@{self.bot.user.id}>', '').strip()
+        # Mention clean
+        user_message = (
+            message.content
+            .replace(f'<@!{self.bot.user.id}>', '')
+            .replace(f'<@{self.bot.user.id}>', '')
+            .strip()
+        )
 
-        # ২. ট্রিগার কন্ডিশন
         is_mentioned = self.bot.user in message.mentions
-        is_reply = (message.reference and message.reference.resolved and message.reference.resolved.author == self.bot.user)
+        is_reply = (
+            message.reference
+            and message.reference.resolved
+            and message.reference.resolved.author == self.bot.user
+        )
         is_named = "wow" in message.content.lower().split()
 
-        # ৩. শুধু পিং করলে ইনফো
-        if self.bot.user in message.mentions and not user_message:
+        # Only ping info
+        if is_mentioned and not user_message:
             embed = discord.Embed(
                 title="🤖 Hello! I am Wow",
-                description="Powered by **Gemini AI**! 🚀",
-                color=discord.Color.blue()
+                description="I can chat in **Bengali, English & Hindi** 🌍\nJust mention me!",
+                color=discord.Color.blurple()
             )
-            embed.add_field(name="💬 Chat", value="Ping me and say something!", inline=False)
             await message.channel.send(embed=embed)
             return
 
-        # ৪. চ্যাটিং লজিক
         if (is_mentioned and user_message) or is_reply or is_named:
-            
-            try: await message.add_reaction(random.choice(self.reactions))
-            except: pass
+
+            try:
+                await message.add_reaction(random.choice(self.reactions))
+            except:
+                pass
 
             async with message.channel.typing():
-                try:
-                    if not user_message: user_message = message.content
-                    full_prompt = f"{self.system_prompt}\nUser: {user_message}\nWow:"
+                if not user_message:
+                    user_message = message.content
 
-                    # API কল (Async)
-                    response = await model.generate_content_async(full_prompt)
-                    
-                    bot_reply = response.text
-                    
-                    # মেসেজ বেশি বড় হলে ছোট করা
-                    if len(bot_reply) > 2000:
-                        bot_reply = bot_reply[:1990] + "..."
-                        
-                    await message.reply(bot_reply, mention_author=False)
+                prompt = f"{self.system_prompt}\nUser: {user_message}\nWow:"
 
-                except Exception as e:
-                    print(f"❌ Error: {e}")
-                    await message.reply("😵‍💫 আমার ব্রেইন কানেক্ট হচ্ছে না! একটু পরে চেষ্টা করো।", mention_author=False)
+                loop = asyncio.get_event_loop()
+                bot_reply = await loop.run_in_executor(
+                    None, self.get_smart_response, prompt
+                )
+
+                if len(bot_reply) > 2000:
+                    bot_reply = bot_reply[:1990] + "..."
+
+                await message.reply(bot_reply, mention_author=False)
+
+        # 🔴 VERY IMPORTANT
+        await self.bot.process_commands(message)
+
 
 async def setup(bot):
     await bot.add_cog(AIChat(bot))
-    
