@@ -20,7 +20,7 @@ class AIChat(commands.Cog):
 
         # মডেল লিস্ট (অটোমেটিক সুইচ করবে)
         self.models = [
-            "gemini-3.0-flash"
+            "gemini-3.0-flash",
             "gemini-2.0-flash",       # লেটেস্ট ও সুপার ফাস্ট
             "gemini-1.5-flash",       # স্টেবল ব্যাকআপ
             "gemini-1.5-pro",         # হাই কোয়ালিটি
