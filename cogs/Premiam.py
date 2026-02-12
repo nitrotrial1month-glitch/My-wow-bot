@@ -1,88 +1,69 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import datetime
-
-# utils.py থেকে শুধুমাত্র ভিউ এবং চেকার ইমপোর্ট করা হচ্ছে
-from utils import (
-    PremiumTypeView, 
-    check_advanced_premium
-)
+from utils import PremiumSelectionView, get_theme_color, load_config, PRICES
 
 class PremiumManagement(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ====================================================
-    # 1. প্রিমিয়াম কেনার কমান্ড (Slash Command)
-    # ====================================================
-    @app_commands.command(name="buy_premium", description="🛒 Buy Premium for Yourself or this Server")
+    # --- ১. প্রিমিয়াম কেনার কমান্ড ---
+    @app_commands.command(name="buy_premium", description="🛒 Upgrade to Premium and unlock Gold Theme")
     async def buy_premium(self, interaction: discord.Interaction):
-        # একটি সুন্দর এমবেড তৈরি
+        color = get_theme_color(interaction.user.id, interaction.guild.id)
+        
+        # এমবেড (সম্পূর্ণ ইংলিশে)
         embed = discord.Embed(
             title="💎 Premium Store",
             description=(
-                "Choose an option below to upgrade:\n\n"
-                "👤 **User Premium:**\n"
-                "• Works in **ALL** servers where the bot is present.\n"
-                "• Access to exclusive user commands.\n\n"
-                "🏰 **Server Premium:**\n"
-                "• Works for **EVERYONE** in this server.\n"
-                "• Unlock limits and advanced features for the server."
+                "Upgrade now to unlock the **Gold Theme** and exclusive features!\n\n"
+                f"👤 **User Premium:** {PRICES['user']}\n"
+                "• Works in ALL servers.\n"
+                "• Your profile and commands will be **GOLD**.\n\n"
+                f"🏰 **Server Premium:** {PRICES['server']}\n"
+                "• Works for EVERYONE in this server.\n"
+                "• Server embeds will be **GOLD**."
             ),
-            color=discord.Color.gold()
+            color=color
         )
-        # বটের লোগো থাকলে সেটা দেখাবে
         if self.bot.user.avatar:
             embed.set_thumbnail(url=self.bot.user.avatar.url)
             
-        embed.set_footer(text="Secure Payment via bKash & Nagad")
+        await interaction.response.send_message(embed=embed, view=PremiumSelectionView())
 
-        # utils.py এর ভিউ কল করা হচ্ছে (এখান থেকেই প্রসেস শুরু হবে)
-        await interaction.response.send_message(embed=embed, view=PremiumTypeView())
-
-    # ====================================================
-    # 2. স্ট্যাটাস চেক কমান্ড (User & Server)
-    # ====================================================
-    @app_commands.command(name="premium_status", description="📊 Check your Premium Status & Expiry")
+    # --- ২. স্ট্যাটাস চেক কমান্ড ---
+    @app_commands.command(name="premium_status", description="📊 Check your current subscription status")
     async def premium_status(self, interaction: discord.Interaction):
-        # ইউজার এবং সার্ভার উভয়ের স্ট্যাটাস চেক করা (utils.py এর ফাংশন দিয়ে)
-        user_status = check_advanced_premium(interaction.user.id)
-        server_status = check_advanced_premium(None, interaction.guild.id)
+        config = load_config()
+        user_id = str(interaction.user.id)
+        guild_id = str(interaction.guild.id)
+        color = get_theme_color(interaction.user.id, interaction.guild.id)
         
-        embed = discord.Embed(title="📊 Premium Status Profile", color=discord.Color.blurple())
+        # এমবেড টাইটেল ইংলিশে
+        embed = discord.Embed(title="📊 Subscription Status", color=color)
         
-        # --- User Status Section ---
-        if user_status["active"]:
-            tier = user_status["tier"].upper()
-            embed.add_field(
-                name=f"👤 User: **{tier}**", 
-                value="✅ Active across all servers.", 
-                inline=False
-            )
+        # স্ট্যাটাস চেক এবং বাংলা রিপ্লাই সেট করা
+        
+        # User Status
+        if user_id in config.get("premium_users", {}):
+            expiry = config["premium_users"][user_id]["expiry"].split("T")[0]
+            embed.add_field(name="👤 User Plan", value=f"✅ **সক্রিয় (Premium)**\nমেয়াদ: {expiry}", inline=False)
         else:
-            embed.add_field(
-                name="👤 User: **Free**", 
-                value="❌ No active subscription. Use `/buy_premium`.", 
-                inline=False
-            )
+            embed.add_field(name="👤 User Plan", value="🟦 **ফ্রি (Basic)**", inline=False)
 
-        # --- Server Status Section ---
-        if server_status["active"]:
-            tier = server_status["tier"].upper()
-            embed.add_field(
-                name=f"🏰 Server: **{tier}**", 
-                value="✅ This server has premium features enabled.", 
-                inline=False
-            )
+        # Server Status
+        if guild_id in config.get("premium_servers", {}):
+            expiry = config["premium_servers"][guild_id]["expiry"].split("T")[0]
+            embed.add_field(name="🏰 Server Plan", value=f"✅ **সক্রিয় (Premium)**\nমেয়াদ: {expiry}", inline=False)
         else:
-            embed.add_field(
-                name="🏰 Server: **Free**", 
-                value="❌ No server subscription.", 
-                inline=False
-            )
+            embed.add_field(name="🏰 Server Plan", value="🟦 **ফ্রি (Basic)**", inline=False)
 
-        embed.set_footer(text=f"Requested by {interaction.user.name}")
+        # ফুটার মেসেজ (বাংলায় উৎসাহ দেওয়া)
+        if color == discord.Color.gold():
+            embed.set_footer(text="✨ আপনি একজন প্রিমিয়াম মেম্বার! গোল্ড থিম এনজয় করুন!")
+        else:
+            embed.set_footer(text="গোল্ড থিম পেতে /buy_premium ব্যবহার করুন!")
+
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
