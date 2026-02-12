@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands
 import aiohttp
 import os
-import json
 import random
+import asyncio
 
 # Railway Variable থেকে API Key নেওয়া
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -13,47 +13,55 @@ class AIChat(commands.Cog):
         self.bot = bot
         self.reactions = ["🔥", "👀", "🤖", "⚡", "😂", "🤔", "👋"]
         
-        # সিস্টেম প্রম্পট
         self.system_prompt = (
             "You are a helpful and friendly Discord bot named 'Wow'. "
             "Reply in the SAME language as the user (Bengali/English/Hindi). "
-            "Keep answers short, funny, and engaging."
+            "Keep answers short (max 2 sentences), funny, and engaging."
         )
+
+        # --- মডেলের লিস্ট (অগ্রাধিকার অনুযায়ী) ---
+        self.models = [
+            "gemini-2.0-flash",       # লেটেস্ট এবং সুপার ফাস্ট (First Priority)
+            "gemini-1.5-flash",       # স্টেবল এবং নির্ভরযোগ্য
+            "gemini-1.5-flash-latest",
+            "gemini-pro"              # পুরনো কিন্তু ব্যাকআপ হিসেবে ভালো
+        ]
 
     async def get_direct_response(self, text):
         if not GOOGLE_API_KEY:
             return "⚠️ API Key নেই! Railway তে চেক করুন।"
 
-        # সরাসরি লিংক (Gemini 1.5 Flash)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
-        
-        headers = {"Content-Type": "application/json"}
-        data = {
-            "contents": [{
-                "parts": [{"text": f"{self.system_prompt}\nUser: {text}\nWow:"}]
-            }]
-        }
+        async with aiohttp.ClientSession() as session:
+            # একটার পর একটা মডেল ট্রাই করবে
+            for model in self.models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GOOGLE_API_KEY}"
+                
+                headers = {"Content-Type": "application/json"}
+                data = {
+                    "contents": [{
+                        "parts": [{"text": f"{self.system_prompt}\nUser: {text}\nWow:"}]
+                    }]
+                }
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, headers=headers, json=data) as response:
-                    # যদি সব ঠিক থাকে (200 OK)
-                    if response.status == 200:
-                        result = await response.json()
-                        return result['candidates'][0]['content']['parts'][0]['text']
-                    
-                    # যদি কোটা শেষ হয় (429)
-                    elif response.status == 429:
-                        return "❌ কোটা শেষ! নতুন API Key দরকার।"
-                    
-                    # অন্য কোনো এরর
-                    else:
-                        error_text = await response.text()
-                        print(f"Server Error: {error_text}") # কনসোলে দেখাবে
-                        return f"⚠️ সার্ভার এরর: {response.status}"
+                try:
+                    async with session.post(url, headers=headers, json=data) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            return result['candidates'][0]['content']['parts'][0]['text']
                         
-        except Exception as e:
-            return f"❌ কোড এরর: {e}"
+                        elif response.status == 404:
+                            print(f"⚠️ {model} পাওয়া যায়নি, পরেরটি দেখছি...")
+                            continue # পরের মডেলে যাবে
+                        
+                        elif response.status == 429:
+                            print(f"⚠️ {model} এর কোটা শেষ, পরেরটি দেখছি...")
+                            continue
+
+                except Exception as e:
+                    print(f"Error checking {model}: {e}")
+                    continue
+            
+            return "❌ দুঃখিত! আমার ব্রেইন এখন কাজ করছে না (API Key বা কোটা সমস্যা)।"
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -68,11 +76,14 @@ class AIChat(commands.Cog):
 
         # ৩. শুধু পিং করলে ইনফো
         if is_mentioned and not user_message:
-            embed = discord.Embed(description="Yes boss? I am ready! 🚀", color=discord.Color.green())
+            embed = discord.Embed(
+                description="⚡ I am running on **Gemini Flash 2.0**! Super Fast! 🚀",
+                color=discord.Color.gold()
+            )
             await message.channel.send(embed=embed)
             return
 
-        # ৪. চ্যাট লজিক (শুধু পিং বা রিপ্লাই হলে)
+        # ৪. চ্যাট লজিক
         if (is_mentioned and user_message) or is_reply:
             try: await message.add_reaction(random.choice(self.reactions))
             except: pass
@@ -80,7 +91,6 @@ class AIChat(commands.Cog):
             async with message.channel.typing():
                 if not user_message: user_message = message.content
                 
-                # রেসপন্স কল
                 bot_reply = await self.get_direct_response(user_message)
 
                 if len(bot_reply) > 2000:
