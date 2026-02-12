@@ -1,14 +1,17 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from utils import PremiumSelectionView, get_theme_color, load_config, PREMIUM_PRICE
+from utils import PremiumSelectionView, get_theme_color, load_config
+
+# প্রাইস ভেরিয়েবল সরাসরি এখানে রাখা হলো (ইমপোর্ট এরর এড়াতে)
+PREMIUM_PRICE = "100 Taka/Month"
 
 class PremiumManagement(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # --- বটের নাম পরিবর্তন (শুধুমাত্র প্রিমিয়াম সার্ভারে) ---
     async def update_bot_identity(self, interaction, is_premium):
+        """বটের নাম পরিবর্তন লজিক"""
         try:
             me = interaction.guild.me
             if me.guild_permissions.change_nickname:
@@ -17,14 +20,13 @@ class PremiumManagement(commands.Cog):
                         await me.edit(nick="✨ Wow Premium")
                 else:
                     if me.nick is not None:
-                        await me.edit(nick=None) # নাম রিসেট
+                        await me.edit(nick=None)
         except:
             pass
 
     # --- ১. প্রিমিয়াম কেনা ---
     @app_commands.command(name="buy_premium", description="🛒 Unlock Gold Theme & Features for this Server")
     async def buy_premium(self, interaction: discord.Interaction):
-        # কালার চেক (সার্ভার প্রিমিয়াম হলে গোল্ড)
         color = get_theme_color(interaction.guild.id)
         
         embed = discord.Embed(
@@ -35,7 +37,7 @@ class PremiumManagement(commands.Cog):
                 "**💎 Premium Benefits:**\n"
                 "• ✨ Bot Name changes to **'Wow Premium'**\n"
                 "• 🎨 All Embeds become **GOLD** color\n"
-                "• 🎁 Custom Giveaway Settings (Banner, Emoji)\n"
+                "• 🎁 Custom Giveaway Settings\n"
                 "• 🚀 Priority Support"
             ),
             color=color
@@ -51,17 +53,20 @@ class PremiumManagement(commands.Cog):
         config = load_config()
         guild_id = str(interaction.guild.id)
         
-        # কালার লজিক
         theme_color = get_theme_color(interaction.guild.id)
         is_premium = (theme_color == discord.Color.gold())
         
-        # নাম আপডেট করা
         await self.update_bot_identity(interaction, is_premium)
         
         embed = discord.Embed(title="📊 Server Status", color=theme_color)
         
         if is_premium:
-            expiry = config["premium_servers"][guild_id]["expiry"].split("T")[0]
+            # সেফটি চেক: যদি এক্সপায়ারি ডেট না থাকে
+            try:
+                expiry = config["premium_servers"][guild_id]["expiry"].split("T")[0]
+            except:
+                expiry = "Unknown"
+            
             embed.add_field(name="🏰 Server Plan", value=f"✅ **PREMIUM ACTIVE**\n📅 Exp: {expiry}", inline=False)
             embed.set_footer(text="✨ Premium is Active! Gold Theme Enabled.")
         else:
