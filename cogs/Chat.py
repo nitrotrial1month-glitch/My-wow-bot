@@ -6,7 +6,7 @@ import random
 import asyncio
 
 # Railway Variable থেকে API Key নেওয়া
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_API_KEY = AIzaSyA-oDTzSipRGiiTetFuJSRgVsAVt92v_rQ
 
 class AIChat(commands.Cog):
     def __init__(self, bot):
@@ -34,7 +34,7 @@ class AIChat(commands.Cog):
         async with aiohttp.ClientSession() as session:
             # একটার পর একটা মডেল ট্রাই করবে
             for model in self.models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=(GOOGLE_API_KEY)"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=AIzaSyA-oDTzSipRGiiTetFuJSRgVsAVt92v_rQ"
                 
                 headers = {"Content-Type": "application/json"}
                 data = {
