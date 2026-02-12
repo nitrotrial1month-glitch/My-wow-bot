@@ -1,6 +1,27 @@
+import discord
+from discord.ext import commands
+import json
+import os
+
+# ফাইল পাথ
+LEVEL_FILE = 'levels.json'
+
+# JSON লোড করার ফাংশন
+def load_json(filename):
+    if not os.path.exists(filename): return {}
+    with open(filename, 'r', encoding='utf-8') as f:
+        try: return json.load(f)
+        except: return {}
+
+class LevelCheck(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    # XP ক্যালকুলেশন ফাংশন (প্রোগ্রেস বার দেখানোর জন্য এটি এখানেও লাগবে)
+    def get_xp_needed(self, level):
+        return 50 * (level ** 2) + 100
+
     # --- LEVEL CHECK COMMAND ---
-    # name="lvl" দেওয়ার ফলে স্ল্যাশ কমান্ড হবে /lvl
-    # aliases=["exp","xp","EXP","Exp","XP","Xp", "level"] দেওয়ার ফলে প্রিফিক্স হবে !rank, !level
     @commands.hybrid_command(name="lvl", description="📊 Check your current global level", aliases=["rank", "level"])
     async def lvl(self, ctx, member: discord.Member = None):
         user = member or ctx.author
@@ -19,13 +40,12 @@
         needed = self.get_xp_needed(lvl_num)
 
         # --- Stylish Progress Bar ---
-        # 40% পূর্ণ হলে দেখাবে: 🟦🟦🟦🟦⬜⬜⬜⬜⬜⬜
         percent = min(100, int((xp / needed) * 100))
         bar_length = 12
         filled = int(bar_length * percent / 100)
         
         if filled == bar_length:
-            bar = "🟩" * filled # পূর্ণ হলে সবুজ
+            bar = "🟩" * filled 
         else:
             bar = "🟦" * filled + "⬜" * (bar_length - filled)
 
@@ -46,4 +66,7 @@
         embed.set_footer(text=f"Requested by {ctx.author.name}")
         
         await ctx.send(embed=embed)
-      
+
+async def setup(bot):
+    await bot.add_cog(LevelCheck(bot))
+    
