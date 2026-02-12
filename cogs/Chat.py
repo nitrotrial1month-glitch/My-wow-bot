@@ -6,7 +6,7 @@ import os
 import random
 import asyncio
 
-# Retrieve API Key from Railway Variables
+# Retrieve API Key
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Initialize Client
@@ -22,45 +22,54 @@ class AIChat(commands.Cog):
         self.bot = bot
         self.reactions = ["🔥", "👀", "🤖", "⚡", "😂", "🤔", "👋", "✨"]
         
-        # --- System Prompt for All Language Support ---
         self.system_prompt = (
             "You are a helpful, witty, and friendly Discord bot named 'Wow'. "
             "INSTRUCTION: Detect the language of the user's message and reply in the EXACT SAME language. "
-            "Example: If user speaks Bengali, reply in Bengali. If English, reply in English. "
             "Keep your answers short, engaging, and fun (max 2-3 sentences)."
         )
 
-    # --- Smart Response Function (Tries multiple models) ---
+        # --- 🔄 Model Rotation List (Backup Strategy) ---
+        # If the first one fails (Limit Reached), it will use the next one.
+        self.models_list = [
+            "gemini-2.0-flash",       # Latest & Fastest (First Priority)
+            "gemini-1.5-flash",       # Stable & High Limit
+            "gemini-1.5-flash-8b",    # Very Fast & Cheap
+            "gemini-1.5-pro",         # Smarter but slower
+            "gemini-1.0-pro"          # Oldest but reliable backup
+        ]
+
+    # --- 🧠 Smart Response Function (Auto-Switching) ---
     async def get_ai_response(self, full_prompt):
         if not client:
             return "⚠️ API Key is missing in Railway Variables!"
 
-        # List of models to try (Priority: 2.0 Flash -> 1.5 Flash -> 1.5 Pro)
-        models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
-
-        for model_name in models_to_try:
+        # Loop through all available models
+        for model_name in self.models_list:
             try:
-                # Attempt to generate content
+                # print(f"🔄 Trying model: {model_name}...") # Debugging Line
+                
                 response = await client.aio.models.generate_content(
                     model=model_name,
                     contents=full_prompt,
                     config=types.GenerateContentConfig(
-                        temperature=0.8, # Creative but stable
+                        temperature=0.8,
                         max_output_tokens=200 
                     )
                 )
-                return response.text # Return if successful
+                return response.text # Success! Return the answer.
+            
             except Exception as e:
-                print(f"⚠️ Model '{model_name}' failed: {e}")
-                continue # Try the next model
+                # If Error 429 (Limit Reached) or 404 (Not Found) occurs, ignore and try next.
+                print(f"⚠️ Model '{model_name}' failed or limit reached. Switching...")
+                continue # Jump to the next model in the list
         
-        return "❌ All AI models are currently busy. Please try again later."
+        return "❌ My brain is tired! (Rate Limit Exceeded). Please wait 1 minute."
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot: return
 
-        # 1. Clean the user message (Remove bot mentions)
+        # 1. Clean Message
         user_message = message.content.replace(f'<@!{self.bot.user.id}>', '').replace(f'<@{self.bot.user.id}>', '').strip()
 
         # 2. Check Triggers
@@ -68,39 +77,31 @@ class AIChat(commands.Cog):
         is_reply = (message.reference and message.reference.resolved and message.reference.resolved.author == self.bot.user)
         is_named = "wow" in message.content.lower().split()
 
-        # 3. Logic: Just Ping (No Message) -> Show Info Embed
+        # 3. Logic: Just Ping
         if is_mentioned and not user_message:
             embed = discord.Embed(
                 title="🤖 Hello! I am Wow",
-                description="I am an advanced AI bot powered by **Google Gemini 2.0**! 🚀",
-                color=discord.Color.from_rgb(0, 162, 255)
+                description="I am an advanced AI bot powered by **Google Gemini**! 🚀",
+                color=discord.Color.blue()
             )
-            embed.set_thumbnail(url=self.bot.user.avatar.url if self.bot.user.avatar else None)
-            embed.add_field(name="🌍 Multi-Language", value="I speak **ALL Languages**! Just talk to me.", inline=False)
-            embed.add_field(name="💬 How to use?", value="Simply ping me or reply to my messages.\nExample: `@Wow How are you?`", inline=False)
-            embed.set_footer(text="Developed for You ❤️")
-            
+            embed.add_field(name="💬 Chat", value="Ping me and say something!", inline=False)
             await message.channel.send(embed=embed)
             return
 
-        # 4. Logic: Chatting (Ping + Text OR Reply OR Name Call)
+        # 4. Logic: Chatting
         if (is_mentioned and user_message) or is_reply or is_named:
             
-            # Add a random reaction
             try: await message.add_reaction(random.choice(self.reactions))
             except: pass
 
             async with message.channel.typing():
-                # Handle empty message in replies
                 if not user_message: user_message = message.content
                 
-                # Create the prompt
                 full_prompt = f"{self.system_prompt}\nUser: {user_message}\nWow:"
 
-                # Get response using the smart function
+                # Call the smart function
                 bot_reply = await self.get_ai_response(full_prompt)
 
-                # Split message if too long (Discord limit 2000)
                 if len(bot_reply) > 2000:
                     bot_reply = bot_reply[:1990] + "..."
 
@@ -108,3 +109,4 @@ class AIChat(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(AIChat(bot))
+    
