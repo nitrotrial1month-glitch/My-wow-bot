@@ -20,7 +20,8 @@ class AIChat(commands.Cog):
         self.reactions = ["🔥", "👀", "🤖", "⚡", "😂", "🤔", "👋"]
         self.system_prompt = (
             "You are a helpful and friendly Discord bot named 'Wow'. "
-            "Reply in Bengali or English. Keep answers short and funny."
+            "Reply in Bengali or English based on the user's language. "
+            "Keep answers short (max 2 sentences), funny, and engaging."
         )
 
     @commands.Cog.listener()
@@ -56,34 +57,46 @@ class AIChat(commands.Cog):
             async with message.channel.typing():
                 try:
                     if not user_message: user_message = message.content
-
                     full_prompt = f"{self.system_prompt}\nUser: {user_message}\nWow:"
 
-                    # API কল (মডেলের নাম পরিবর্তন করা হয়েছে)
-                    response = await client.aio.models.generate_content(
-                        model='gemini-1.5-flash-002', # আপডেট করা মডেল নেম
-                        contents=full_prompt,
-                        config=types.GenerateContentConfig(
-                            temperature=0.9,
-                            max_output_tokens=150,
-                        )
-                    )
-                    
-                    bot_reply = response.text
-                    await message.reply(bot_reply, mention_author=False)
+                    # --- MULTI-MODEL TRY LOGIC ---
+                    # আমরা এক এক করে ৩টি মডেল ট্রাই করব। যেটা কাজ করবে সেটাই উত্তর দেবে।
+                    models_to_try = [
+                        "gemini-2.0-flash",       # লেটেস্ট এবং ফাস্ট
+                        "gemini-1.5-flash",       # স্ট্যান্ডার্ড
+                        "gemini-1.5-flash-002",   # অল্টারনেটিভ ভার্সন
+                        "gemini-1.5-pro"          # পাওয়ারফুল ব্যাকআপ
+                    ]
+
+                    response_text = None
+
+                    for model_name in models_to_try:
+                        try:
+                            print(f"🔄 Trying model: {model_name}...") # কনসোলে দেখাবে কোন মডেল ট্রাই করছে
+                            response = await client.aio.models.generate_content(
+                                model=model_name,
+                                contents=full_prompt,
+                                config=types.GenerateContentConfig(
+                                    temperature=0.9,
+                                    max_output_tokens=150,
+                                )
+                            )
+                            response_text = response.text
+                            print(f"✅ Success with: {model_name}")
+                            break # সফল হলে লুপ ব্রেক করবে
+                        except Exception as e:
+                            print(f"⚠️ Failed {model_name}: {e}")
+                            continue # ফেইল হলে পরের মডেল ট্রাই করবে
+
+                    # যদি সব মডেল ফেইল করে
+                    if response_text:
+                        await message.reply(response_text, mention_author=False)
+                    else:
+                        await message.reply("😵‍💫 আমার ব্রেইন কানেক্ট হচ্ছে না! (All models failed)", mention_author=False)
 
                 except Exception as e:
-                    print(f"❌ Error in AI Reply: {e}")
-                    # যদি ফ্ল্যাশ মডেল কাজ না করে, তবে প্রো মডেলে ট্রাই করবে (ব্যাকআপ)
-                    try:
-                        response = await client.aio.models.generate_content(
-                            model='gemini-1.5-pro',
-                            contents=full_prompt
-                        )
-                        await message.reply(response.text, mention_author=False)
-                    except:
-                        await message.channel.send(f"⚠️ আমার সার্ভারে একটু সমস্যা হচ্ছে! (Error: 404/Model Not Found)")
+                    print(f"❌ Critical Error: {e}")
+                    await message.channel.send(f"⚠️ Error: {e}")
 
 async def setup(bot):
     await bot.add_cog(AIChat(bot))
-                    
