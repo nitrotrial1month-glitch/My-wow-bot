@@ -21,6 +21,7 @@ class AIChat(commands.Cog):
 
         # --- মডেলের লিস্ট (অগ্রাধিকার অনুযায়ী) ---
         self.models = [
+            "gemini-3.0-flash"
             "gemini-2.0-flash",       # লেটেস্ট এবং সুপার ফাস্ট (First Priority)
             "gemini-1.5-flash",       # স্টেবল এবং নির্ভরযোগ্য
             "gemini-1.5-flash-latest",
