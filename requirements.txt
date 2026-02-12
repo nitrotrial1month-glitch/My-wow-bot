@@ -1,4 +1,3 @@
 discord.py
   
-google.genai
-google.generativeai
+google-generativeai>=0.7.0
