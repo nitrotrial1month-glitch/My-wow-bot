@@ -2,10 +2,10 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
-# utils থেকে প্রিমিয়াম লজিক এবং থিম কালার ইমপোর্ট
+# Importing premium logic and theme colors from utils
 from utils import load_config, get_theme_color
 
-# --- ১. কনফার্মেশন ভিউ (বাটন লজিক) ---
+# --- 1. Confirmation View (Button Logic) ---
 class ServerWipeConfirm(discord.ui.View):
     def __init__(self, author_id):
         super().__init__(timeout=60)
@@ -13,24 +13,25 @@ class ServerWipeConfirm(discord.ui.View):
 
     @discord.ui.button(label="YES, WIPE EVERYTHING", style=discord.ButtonStyle.danger, emoji="⚠️")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # বাটন ক্লিক করা ইউজার পোল হোস্ট কি না চেক
+        # Check if the user clicking is the original author
         if interaction.user.id != self.author_id:
-            return await interaction.response.send_message("❌ এটি আপনার জন্য নয়!", ephemeral=True)
+            return await interaction.response.send_message("❌ This action is not authorized for you!", ephemeral=True)
 
         guild = interaction.guild
-        await interaction.response.send_message("🚀 **বড় ধরনের ধ্বংসযজ্ঞ শুরু হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।**", ephemeral=True)
+        await interaction.response.send_message("🚀 **Initiating full server wipe... please stand by.**", ephemeral=True)
 
-        # ১. সব চ্যানেল ডিলিট করা (বট যে চ্যানেলে আছে সেটি বাদে সব)
+        # 1. Delete all channels
         for channel in guild.channels:
             try:
                 await channel.delete(reason="Emergency Server Wipe - Premium Command")
             except:
                 continue 
 
-        # ২. নতুন একটি চ্যানেল তৈরি করা এবং মেসেজ দেওয়া
+        # 2. Create a fresh secure channel and send final status
         new_channel = await guild.create_text_channel(name="☢️-server-nuked")
         
-        color = get_theme_color(guild.id) # প্রিমিয়াম সার্ভার হলে Gold কালার
+        # Premium servers will use Gold theme color
+        color = get_theme_color(guild.id) 
         embed = discord.Embed(
             title="🛑 SERVER SECURED & NUKED",
             description=(
@@ -41,57 +42,57 @@ class ServerWipeConfirm(discord.ui.View):
             ),
             color=color
         )
-        embed.set_footer(text="Emergency System | Security Level: Max")
+        embed.set_footer(text="Emergency System | Security Level: Maximum")
         await new_channel.send(embed=embed)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.author_id:
-            return await interaction.response.send_message("❌ অনুমতি নেই!", ephemeral=True)
+            return await interaction.response.send_message("❌ Permission denied!", ephemeral=True)
             
-        await interaction.response.edit_message(content="✅ **Emergency wipe বাতিল করা হয়েছে।**", embed=None, view=None)
+        await interaction.response.edit_message(content="✅ **Emergency wipe has been cancelled.**", embed=None, view=None)
         self.stop()
 
-# --- ২. মেইন সিকিউরিটি ক্লাস ---
+# --- 2. Main Security Class ---
 class ServerSecurity(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     def is_premium(self, guild_id):
-        """সার্ভার প্রিমিয়াম কি না চেক করবে"""
+        """Checks if the server has Premium status"""
         return get_theme_color(guild_id) == discord.Color.gold()
 
     @app_commands.command(name="emergency_wipe", description="🚨 [PREMIUM ONLY] Delete ALL channels for security")
     @app_commands.checks.has_permissions(administrator=True)
     async def emergency_wipe(self, interaction: discord.Interaction):
-        # ১. অ্যাডমিন বা ওনার চেক
+        # 1. Administrator/Owner validation
         if not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
-            return await interaction.response.send_message("❌ এটি শুধুমাত্র **Server Owner** বা **Administrators** ব্যবহার করতে পারবে।", ephemeral=True)
+            return await interaction.response.send_message("❌ This tool is restricted to the **Server Owner** or **Administrators**.", ephemeral=True)
 
-        # ২. প্রিমিয়াম চেক
+        # 2. Premium validation
         if not self.is_premium(interaction.guild.id):
             embed = discord.Embed(
                 title="🔒 Feature Locked",
-                description="এটি একটি অত্যন্ত সংবেদনশীল ফিচার যা শুধুমাত্র **Premium Server**-এ উপলব্ধ।\n\n⭐ আনলক করতে `/buy_premium` ব্যবহার করুন।",
+                description="This is a highly sensitive feature available only for **Premium Servers**.\n\n⭐ Unlock now using `/buy_premium`.",
                 color=discord.Color.red()
             )
             return await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        # ৩. স্টাইলিশ কনফার্মেশন এমবেড (Falcon/Nova Style)
+        # 3. Stylish confirmation embed (Falcon/Nova Style)
         confirm_embed = discord.Embed(
             title="🚨 EXTREME DANGER ALERT 🚨",
             description=(
-                "### আপনি কি নিশ্চিত?\n"
+                "### Are you absolutely sure?\n"
                 "────────────────────\n"
-                "আপনি এই সার্ভারের **প্রতিটি চ্যানেল এবং ক্যাটাগরি** ডিলিট করতে যাচ্ছেন।\n"
-                "• এই কাজটি একবার করলে আর **ফেরানো সম্ভব নয়**।\n"
-                "• এটি একটি স্থায়ী ধ্বংসযজ্ঞ (Permanent Destruction)।\n"
+                "You are about to **DELETE EVERY CHANNEL** in this server.\n"
+                "• This action is **IRREVERSIBLE**.\n"
+                "• It will result in permanent data loss (Channels/Categories).\n"
                 "────────────────────\n"
-                "**প্রক্রিয়াটি চালিয়ে যেতে নিচের বাটনে ক্লিক করুন।**"
+                "**Click the button below to execute.**"
             ),
             color=discord.Color.dark_red()
         )
-        confirm_embed.set_footer(text="Requested by Authorized Administrator")
+        confirm_embed.set_footer(text="Authorized Administrator Request")
         
         view = ServerWipeConfirm(interaction.user.id)
         await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
