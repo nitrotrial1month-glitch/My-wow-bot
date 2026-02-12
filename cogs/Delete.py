@@ -2,8 +2,10 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
-from utils import check_advanced_premium
+# utils থেকে প্রিমিয়াম লজিক এবং থিম কালার ইমপোর্ট
+from utils import load_config, get_theme_color
 
+# --- ১. কনফার্মেশন ভিউ (বাটন লজিক) ---
 class ServerWipeConfirm(discord.ui.View):
     def __init__(self, author_id):
         super().__init__(timeout=60)
@@ -11,78 +13,88 @@ class ServerWipeConfirm(discord.ui.View):
 
     @discord.ui.button(label="YES, WIPE EVERYTHING", style=discord.ButtonStyle.danger, emoji="⚠️")
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # বাটন ক্লিক করা ইউজার পোল হোস্ট কি না চেক
         if interaction.user.id != self.author_id:
-            return await interaction.response.send_message("❌ This is not for you!", ephemeral=True)
+            return await interaction.response.send_message("❌ এটি আপনার জন্য নয়!", ephemeral=True)
 
         guild = interaction.guild
-        
-        # ডিলিট করার আগে ইউজারকে একটি শেষ মেসেজ দেওয়া
-        await interaction.response.send_message("🚀 Initiating Server Wipe... Please wait.", ephemeral=True)
+        await interaction.response.send_message("🚀 **বড় ধরনের ধ্বংসযজ্ঞ শুরু হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।**", ephemeral=True)
 
-        # ১. সব চ্যানেল ডিলিট করা
+        # ১. সব চ্যানেল ডিলিট করা (বট যে চ্যানেলে আছে সেটি বাদে সব)
         for channel in guild.channels:
             try:
-                await channel.delete(reason="Emergency Server Reset (Ultra Premium)")
+                await channel.delete(reason="Emergency Server Wipe - Premium Command")
             except:
-                continue # কিছু চ্যানেল (যেমন বটের নিজের চ্যানেল) ডিলিট হতে দেরি হতে পারে
+                continue 
 
-        # ২. ডিসকর্ড সার্ভারে অন্তত ১টি চ্যানেল থাকা বাধ্যতামূলক, তাই একটি নতুন চ্যানেল তৈরি করা
-        new_channel = await guild.create_text_channel(name="server-reset")
+        # ২. নতুন একটি চ্যানেল তৈরি করা এবং মেসেজ দেওয়া
+        new_channel = await guild.create_text_channel(name="☢️-server-nuked")
         
+        color = get_theme_color(guild.id) # প্রিমিয়াম সার্ভার হলে Gold কালার
         embed = discord.Embed(
-            title="🛑 Server Nuked & Secured",
-            description="All previous channels have been successfully removed for security purposes.",
-            color=discord.Color.red()
+            title="🛑 SERVER SECURED & NUKED",
+            description=(
+                "### ────────────────────\n"
+                "**The entire server has been wiped successfully.**\n"
+                "```All channels and categories were removed for security reasons.```\n"
+                "────────────────────"
+            ),
+            color=color
         )
-        embed.set_footer(text="Emergency Wipe - Ultra Server Premium")
+        embed.set_footer(text="Emergency System | Security Level: Max")
         await new_channel.send(embed=embed)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.author_id:
-            return await interaction.response.send_message("❌ Not your button!", ephemeral=True)
+            return await interaction.response.send_message("❌ অনুমতি নেই!", ephemeral=True)
             
-        await interaction.response.edit_message(content="✅ Emergency wipe cancelled.", embed=None, view=None)
+        await interaction.response.edit_message(content="✅ **Emergency wipe বাতিল করা হয়েছে।**", embed=None, view=None)
         self.stop()
 
+# --- ২. মেইন সিকিউরিটি ক্লাস ---
 class ServerSecurity(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="emergency_wipe", description="🚨 [ULTRA SERVER ONLY] Delete ALL channels in this server")
-    @app_commands.checks.has_permissions(administrator=True)
-    async def emergency_wipe(self, ctx):
-        # ১. ওনার বা এডমিন চেক (এডমিন পারমিশন ডেকোরেটরেই আছে, ওনার চেক আলাদা করা হলো)
-        if not ctx.author.guild_permissions.administrator and ctx.author.id != ctx.guild.owner_id:
-            return await ctx.send("❌ Only the **Server Owner** or **Administrators** can use this emergency tool.", ephemeral=True)
+    def is_premium(self, guild_id):
+        """সার্ভার প্রিমিয়াম কি না চেক করবে"""
+        return get_theme_color(guild_id) == discord.Color.gold()
 
-        # ২. সার্ভার প্রিমিয়াম চেক (ইউজার প্রিমিয়াম ইগনোর করা হচ্ছে)
-        server_status = check_advanced_premium(None, ctx.guild.id)
-        
-        if not server_status["active"] or server_status["tier"] != "ultra":
+    @app_commands.command(name="emergency_wipe", description="🚨 [PREMIUM ONLY] Delete ALL channels for security")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def emergency_wipe(self, interaction: discord.Interaction):
+        # ১. অ্যাডমিন বা ওনার চেক
+        if not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
+            return await interaction.response.send_message("❌ এটি শুধুমাত্র **Server Owner** বা **Administrators** ব্যবহার করতে পারবে।", ephemeral=True)
+
+        # ২. প্রিমিয়াম চেক
+        if not self.is_premium(interaction.guild.id):
             embed = discord.Embed(
                 title="🔒 Feature Locked",
-                description="This emergency tool requires **Ultra Server Premium**.\nUser Premium is not valid for this command.",
+                description="এটি একটি অত্যন্ত সংবেদনশীল ফিচার যা শুধুমাত্র **Premium Server**-এ উপলব্ধ।\n\n⭐ আনলক করতে `/buy_premium` ব্যবহার করুন।",
                 color=discord.Color.red()
             )
-            embed.add_field(name="Required", value="🥇 Ultra Server Tier", inline=True)
-            return await ctx.send(embed=embed, ephemeral=True)
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        # ৩. কনফার্মেশন প্রম্পট
+        # ৩. স্টাইলিশ কনফার্মেশন এমবেড (Falcon/Nova Style)
         confirm_embed = discord.Embed(
-            title="🚨 EXTREME DANGER! 🚨",
+            title="🚨 EXTREME DANGER ALERT 🚨",
             description=(
-                "You are about to **DELETE EVERY SINGLE CHANNEL** in this server.\n"
-                "This action is **PERMANENT** and cannot be undone.\n\n"
-                "Do you really want to continue?"
+                "### আপনি কি নিশ্চিত?\n"
+                "────────────────────\n"
+                "আপনি এই সার্ভারের **প্রতিটি চ্যানেল এবং ক্যাটাগরি** ডিলিট করতে যাচ্ছেন।\n"
+                "• এই কাজটি একবার করলে আর **ফেরানো সম্ভব নয়**।\n"
+                "• এটি একটি স্থায়ী ধ্বংসযজ্ঞ (Permanent Destruction)।\n"
+                "────────────────────\n"
+                "**প্রক্রিয়াটি চালিয়ে যেতে নিচের বাটনে ক্লিক করুন।**"
             ),
             color=discord.Color.dark_red()
         )
-        confirm_embed.set_footer(text="Requires Administrator & Ultra Server Premium")
+        confirm_embed.set_footer(text="Requested by Authorized Administrator")
         
-        view = ServerWipeConfirm(ctx.author.id)
-        await ctx.send(embed=confirm_embed, view=view, ephemeral=True)
+        view = ServerWipeConfirm(interaction.user.id)
+        await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(ServerSecurity(bot))
-      
