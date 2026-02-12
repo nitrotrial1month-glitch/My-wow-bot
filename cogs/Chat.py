@@ -1,94 +1,84 @@
 import discord
 from discord.ext import commands
-from google import genai
-from google.genai import types
+import aiohttp # ডিসকর্ডের সাথেই থাকে, আলাদা ইনস্টল লাগবে না
 import os
+import json
 import random
-import asyncio
 
-# Retrieve API Key
+# Railway Variable থেকে API Key নেওয়া
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-# Initialize Client
-client = None
-if GOOGLE_API_KEY:
-    try:
-        client = genai.Client(api_key=GOOGLE_API_KEY)
-    except Exception as e:
-        print(f"❌ Client Setup Error: {e}")
 
 class AIChat(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.reactions = ["🔥", "👀", "🤖", "⚡", "😂", "🤔", "👋", "✨"]
+        self.reactions = ["🔥", "👀", "🤖", "⚡", "😂", "🤔", "👋"]
         
+        # সিস্টেম প্রম্পট
         self.system_prompt = (
-            "You are a helpful, witty, and friendly Discord bot named 'Wow'. "
-            "INSTRUCTION: Detect the language of the user's message and reply in the EXACT SAME language. "
-            "Keep your answers short, engaging, and fun (max 2-3 sentences)."
+            "You are a helpful and friendly Discord bot named 'Wow'. "
+            "Reply in the SAME language as the user (Bengali/English/Hindi). "
+            "Keep answers short, funny, and engaging."
         )
 
-        # --- 🔄 Model Rotation List (Backup Strategy) ---
-        # If the first one fails (Limit Reached), it will use the next one.
-        self.models_list = [
-            "gemini-2.0-flash",       # Latest & Fastest (First Priority)
-            "gemini-1.5-flash",       # Stable & High Limit
-            "gemini-1.5-flash-8b",    # Very Fast & Cheap
-            "gemini-1.5-pro",         # Smarter but slower
-            "gemini-1.0-pro"          # Oldest but reliable backup
-        ]
+    # --- সরাসরি ইন্টারনেটের মাধ্যমে গুগলে কানেক্ট করা ---
+    async def get_direct_response(self, text):
+        if not GOOGLE_API_KEY:
+            return "⚠️ API Key পাওয়া যায়নি! Railway Variables চেক করুন।"
 
-    # --- 🧠 Smart Response Function (Auto-Switching) ---
-    async def get_ai_response(self, full_prompt):
-        if not client:
-            return "⚠️ API Key is missing in Railway Variables!"
-
-        # Loop through all available models
-        for model_name in self.models_list:
-            try:
-                # print(f"🔄 Trying model: {model_name}...") # Debugging Line
-                
-                response = await client.aio.models.generate_content(
-                    model=model_name,
-                    contents=full_prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=0.8,
-                        max_output_tokens=200 
-                    )
-                )
-                return response.text # Success! Return the answer.
-            
-            except Exception as e:
-                # If Error 429 (Limit Reached) or 404 (Not Found) occurs, ignore and try next.
-                print(f"⚠️ Model '{model_name}' failed or limit reached. Switching...")
-                continue # Jump to the next model in the list
+        # আমরা সরাসরি gemini-1.5-flash ব্যবহার করব (সবচেয়ে ফাস্ট ও স্টেবল)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GOOGLE_API_KEY}"
         
-        return "❌ My brain is tired! (Rate Limit Exceeded). Please wait 1 minute."
+        headers = {"Content-Type": "application/json"}
+        data = {
+            "contents": [{
+                "parts": [{"text": f"{self.system_prompt}\nUser: {text}\nWow:"}]
+            }]
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=data) as response:
+                # যদি সফল হয় (Status 200)
+                if response.status == 200:
+                    result = await response.json()
+                    try:
+                        return result['candidates'][0]['content']['parts'][0]['text']
+                    except:
+                        return "🤔 উত্তর বুঝতে পারছি না!"
+                
+                # যদি কোটা শেষ হয়ে যায় (Status 429)
+                elif response.status == 429:
+                    return "❌ আমার দৈনিক লিমিট শেষ! (Quota Exceeded). দয়া করে নতুন একটি API Key ব্যবহার করুন।"
+                
+                # অন্য কোনো এরর হলে
+                else:
+                    error_text = await response.text()
+                    print(f"❌ API Error: {response.status} - {error_text}")
+                    return f"⚠️ সার্ভার এরর: {response.status} (Check Console)"
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot: return
 
-        # 1. Clean Message
+        # ক্লিন মেসেজ
         user_message = message.content.replace(f'<@!{self.bot.user.id}>', '').replace(f'<@{self.bot.user.id}>', '').strip()
 
-        # 2. Check Triggers
+        # ট্রিগার চেক
         is_mentioned = self.bot.user in message.mentions
         is_reply = (message.reference and message.reference.resolved and message.reference.resolved.author == self.bot.user)
         is_named = "wow" in message.content.lower().split()
 
-        # 3. Logic: Just Ping
-        if is_mentioned and not user_message:
+        # ইনফো মেসেজ
+        if self.bot.user in message.mentions and not user_message:
             embed = discord.Embed(
                 title="🤖 Hello! I am Wow",
-                description="I am an advanced AI bot powered by **Google Gemini**! 🚀",
-                color=discord.Color.blue()
+                description="Powered by **Direct API (No Library)**! 🚀",
+                color=discord.Color.green()
             )
             embed.add_field(name="💬 Chat", value="Ping me and say something!", inline=False)
             await message.channel.send(embed=embed)
             return
 
-        # 4. Logic: Chatting
+        # চ্যাট লজিক
         if (is_mentioned and user_message) or is_reply or is_named:
             
             try: await message.add_reaction(random.choice(self.reactions))
@@ -97,10 +87,8 @@ class AIChat(commands.Cog):
             async with message.channel.typing():
                 if not user_message: user_message = message.content
                 
-                full_prompt = f"{self.system_prompt}\nUser: {user_message}\nWow:"
-
-                # Call the smart function
-                bot_reply = await self.get_ai_response(full_prompt)
+                # ডাইরেক্ট ফাংশন কল
+                bot_reply = await self.get_direct_response(user_message)
 
                 if len(bot_reply) > 2000:
                     bot_reply = bot_reply[:1990] + "..."
@@ -109,4 +97,4 @@ class AIChat(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(AIChat(bot))
-    
+            
