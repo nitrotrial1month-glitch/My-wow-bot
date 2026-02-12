@@ -12,7 +12,7 @@ CONFIG_FILE = 'config.json'
 OWNER_ID = 1311355680640208926  # আপনার Discord ID
 
 def load_config():
-    """ডাটাবেস লোড করা (Legacy Support ও Poll Settings সহ)"""
+    """ডাটাবেস লোড করা (Legacy Support, Giveaway & Poll Settings সহ)"""
     default_data = {
         # --- LEGACY & SECURITY FEATURES ---
         "anti_link": {"enabled": False, "blocked_list": [], "bypass_roles": [], "blocked_keywords": []},
@@ -25,9 +25,12 @@ def load_config():
         "premium_servers": {},
         "giveaway_settings": {},
         
-        # --- POLL SYSTEM SETTINGS (নতুন যুক্ত করা হয়েছে) ---
+        # --- POLL SYSTEM SETTINGS (Advanced Features Added) ---
         "poll_settings": {
-            "title": "📊 COMMUNITY POLL"
+            "title": "📊 COMMUNITY POLL",
+            "emoji": "🗳️",
+            "image_url": None,
+            "color": 0x3498db # Default Sky Blue
         }
     }
 
@@ -58,7 +61,7 @@ def save_config(data):
 
 def get_theme_color(guild_id):
     """
-    শুধুমাত্র সার্ভার আইডি চেক করবে।
+    সার্ভার আইডি চেক করে থিম কালার রিটার্ন করবে।
     Premium = Gold (🟡), Free = Blue (🔵)
     """
     if not guild_id: return discord.Color.blue()
@@ -96,6 +99,7 @@ def activate_server_premium(guild_id, days=30):
 # ==========================================
 
 class AdminApprovalView(View):
+    """অ্যাডমিন ডিএম ভিউ (অ্যাপ্রুভ/রিজেক্ট)"""
     def __init__(self, target_id):
         super().__init__(timeout=None)
         self.target_id = target_id
@@ -112,6 +116,7 @@ class AdminApprovalView(View):
         self.stop()
 
 class PaymentModal(Modal, title="Buy Server Premium"):
+    """পেমেন্ট ডিটেইলস সাবমিট মডাল"""
     def __init__(self):
         super().__init__()
         self.trx_id = TextInput(label="Transaction ID (TrxID)", placeholder="Example: 8G7D...", required=True)
@@ -133,15 +138,10 @@ class PaymentModal(Modal, title="Buy Server Premium"):
             await owner.send(embed=embed, view=AdminApprovalView(interaction.guild.id))
 
 class PremiumSelectionView(View):
+    """প্রিমিয়াম বাই বাটন ভিউ"""
     def __init__(self):
         super().__init__()
 
     @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="👑")
     async def buy_server(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(PaymentModal())
-    # শুধুমাত্র একটাই বাটন: Buy Server Premium
-    @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="👑")
-    async def buy_server(self, interaction: discord.Interaction, button: Button):
-        # মডাল ওপেন হবে (এখানেই শেষ, আর কোনো কোড নেই)
-        await interaction.response.send_modal(PaymentModal())
-        
