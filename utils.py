@@ -34,6 +34,7 @@ def load_config():
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         try:
             data = json.load(f)
+            # মিসিং ডাটা ফিক্স করা
             for key, value in default_data.items():
                 if key not in data:
                     data[key] = value
@@ -101,8 +102,6 @@ class AdminApprovalView(View):
         
         # অ্যাডমিনকে কনফার্মেশন
         await interaction.response.send_message(f"✅ **Server Premium** Activated! (Server ID: `{self.target_id}`)")
-        
-        # বাটনগুলো ডিজেবল করা (যাতে দুবার চাপ না লাগে)
         self.stop()
 
     @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red)
@@ -136,6 +135,8 @@ class PaymentModal(Modal, title="Buy Server Premium"):
             
             # অ্যাডমিন ভিউ পাঠানো
             await owner.send(embed=embed, view=AdminApprovalView(interaction.guild.id))
+        else:
+            print("❌ Owner ID not found or DM failed.")
 
 # --- ৩. মেইন বাটন (যা ইউজার দেখবে) ---
 class PremiumSelectionView(View):
@@ -145,45 +146,6 @@ class PremiumSelectionView(View):
     # শুধুমাত্র একটাই বাটন: Buy Server Premium
     @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="👑")
     async def buy_server(self, interaction: discord.Interaction, button: Button):
-        # মডাল ওপেন হবে
+        # মডাল ওপেন হবে (এখানেই শেষ, আর কোনো কোড নেই)
         await interaction.response.send_modal(PaymentModal())
-            await owner.send(embed=embed, view=AdminApprovalView(interaction.guild.id))
-
-class AdminApprovalView(View):
-    def __init__(self, target_id):
-        super().__init__(timeout=None)
-        self.target_id = target_id
-
-    @discord.ui.button(label="✅ Approve Server", style=discord.ButtonStyle.green)
-    async def approve(self, interaction: discord.Interaction, button: Button):
-        activate_server_premium(self.target_id)
-        await interaction.response.send_message(f"✅ Server Premium Activated! (ID: `{self.target_id}`)")
-        self.stop()
-
-    @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red)
-    async def reject(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("❌ Request Rejected.")
-        self.stop()
-
-class PremiumSelectionView(View):
-    @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="👑")
-    async def buy_server(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(PaymentModal())
-        await interaction.response.send_message(f"✅ **{self.p_type.upper()} Premium** Activated for ID: `{self.target_id}`")
-        self.stop()
-
-    @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red)
-    async def reject(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message(f"❌ Request Rejected.")
-        self.stop()
-
-# ৩. ইউজার যখন কমান্ড দেবে তখন এই বাটন আসবে
-class PremiumSelectionView(View):
-    @discord.ui.button(label="👤 Buy User Premium", style=discord.ButtonStyle.primary, emoji="👤")
-    async def buy_user(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(PaymentModal("user"))
-
-    @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="🏰")
-    async def buy_server(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(PaymentModal("server"))
         
