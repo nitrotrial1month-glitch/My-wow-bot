@@ -135,14 +135,4 @@ class GiveawaySystem(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(GiveawaySystem(bot))
-            color=discord.Color.green()
-        )
-        # জেতার পরেও থাম্বনেইল থাকবে
-        win_embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/744/744922.png") 
-        
-        await msg.edit(embed=win_embed)
-        await interaction.channel.send(f"Congratulations {mentions}! You won **{prize}**! 🥳")
-
-async def setup(bot):
-    await bot.add_cog(GiveawaySystem(bot))
-        
+            
