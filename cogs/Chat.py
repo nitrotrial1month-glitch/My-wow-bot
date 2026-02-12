@@ -6,7 +6,7 @@ import random
 import asyncio
 
 # 🔴 আপনার API Key
-GOOGLE_API_KEY = "AIzaSyDNm6_j5DcN8l0UtVeQGzSDg7v-PUtVzGo"
+GOOGLE_API_KEY = "AIzaSyAqjoitOuE-4XyLBLWzK_6XqBrgmCLVE8k"
 
 # নতুন ক্লায়েন্ট সেটআপ
 client = genai.Client(api_key=GOOGLE_API_KEY)
