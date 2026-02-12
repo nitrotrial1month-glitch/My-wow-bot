@@ -34,7 +34,7 @@ class AIChat(commands.Cog):
         async with aiohttp.ClientSession() as session:
             # একটার পর একটা মডেল ট্রাই করবে
             for model in self.models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GOOGLE_API_KEY}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=(GOOGLE_API_KEY)"
                 
                 headers = {"Content-Type": "application/json"}
                 data = {
