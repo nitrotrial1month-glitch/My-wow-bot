@@ -12,18 +12,23 @@ CONFIG_FILE = 'config.json'
 OWNER_ID = 1311355680640208926  # আপনার Discord ID
 
 def load_config():
-    """ডাটাবেস লোড করা (Legacy Support সহ)"""
+    """ডাটাবেস লোড করা (Legacy Support ও Poll Settings সহ)"""
     default_data = {
-        # --- LEGACY FEATURES (আপনার আগের লজিক) ---
+        # --- LEGACY & SECURITY FEATURES ---
         "anti_link": {"enabled": False, "blocked_list": [], "bypass_roles": [], "blocked_keywords": []},
         "bad_words": [],
         "auto_role_id": None,
         "welcome": {"enabled": True, "channel_id": None, "title": "Welcome!", "description": "Hi {member}!", "image_url": None, "color": 0x00ff00},
         "leave": {"channel_id": None, "title": "Goodbye!", "description": "{member} left.", "image_url": None, "color": 0xff0000},
         
-        # --- ONLY SERVER PREMIUM ---
+        # --- PREMIUM SERVER FEATURES ---
         "premium_servers": {},
-        "giveaway_settings": {} 
+        "giveaway_settings": {},
+        
+        # --- POLL SYSTEM SETTINGS (নতুন যুক্ত করা হয়েছে) ---
+        "poll_settings": {
+            "title": "📊 COMMUNITY POLL"
+        }
     }
 
     if not os.path.exists(CONFIG_FILE):
@@ -34,7 +39,7 @@ def load_config():
     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
         try:
             data = json.load(f)
-            # মিসিং ডাটা ফিক্স করা
+            # মিসিং ডাটা ফিক্স করা যাতে নতুন সেটিংস ক্রাশ না করে
             for key, value in default_data.items():
                 if key not in data:
                     data[key] = value
@@ -43,6 +48,7 @@ def load_config():
             return default_data
 
 def save_config(data):
+    """ডাটাবেস সেভ করা"""
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
@@ -86,10 +92,9 @@ def activate_server_premium(guild_id, days=30):
     save_config(config)
 
 # ==========================================
-# 3. UI VIEWS (Only Server Options)
+# 3. UI VIEWS (Premium Management)
 # ==========================================
 
-# --- ১. অ্যাডমিন অ্যাপ্রুভাল বাটন (যা আপনার DM এ যাবে) ---
 class AdminApprovalView(View):
     def __init__(self, target_id):
         super().__init__(timeout=None)
@@ -97,11 +102,8 @@ class AdminApprovalView(View):
 
     @discord.ui.button(label="✅ Approve Server", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: Button):
-        # প্রিমিয়াম চালু করা
         activate_server_premium(self.target_id)
-        
-        # অ্যাডমিনকে কনফার্মেশন
-        await interaction.response.send_message(f"✅ **Server Premium** Activated! (Server ID: `{self.target_id}`)")
+        await interaction.response.send_message(f"✅ **Server Premium** Activated for ID: `{self.target_id}`")
         self.stop()
 
     @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.red)
@@ -109,7 +111,6 @@ class AdminApprovalView(View):
         await interaction.response.send_message(f"❌ Request Rejected for ID: `{self.target_id}`")
         self.stop()
 
-# --- ২. পেমেন্ট ইনফো মডাল (ফর্ম) ---
 class PaymentModal(Modal, title="Buy Server Premium"):
     def __init__(self):
         super().__init__()
@@ -119,30 +120,25 @@ class PaymentModal(Modal, title="Buy Server Premium"):
         self.add_item(self.method)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # ১. ইউজারকে মেসেজ (চ্যানেলে)
-        await interaction.response.send_message("✅ পেমেন্ট ডিটেইলস অ্যাডমিনের কাছে পাঠানো হয়েছে! অনুগ্রহ করে অপেক্ষা করুন।", ephemeral=True)
+        await interaction.response.send_message("✅ পেমেন্ট ডিটেইলস অ্যাডমিনের কাছে পাঠানো হয়েছে।", ephemeral=True)
         
-        # ২. অ্যাডমিনকে মেসেজ (DM এ)
         owner = interaction.client.get_user(OWNER_ID)
         if owner:
             embed = discord.Embed(title="🏰 New Server Premium Request", color=discord.Color.gold())
             embed.add_field(name="Buyer", value=f"{interaction.user} ({interaction.user.id})", inline=False)
             embed.add_field(name="Server ID", value=f"`{interaction.guild.id}`", inline=True)
-            embed.add_field(name="Server Name", value=f"`{interaction.guild.name}`", inline=True)
             embed.add_field(name="TrxID", value=f"`{self.trx_id.value}`", inline=False)
             embed.add_field(name="Method", value=f"`{self.method.value}`", inline=False)
-            embed.set_footer(text="Use buttons below to Approve or Reject")
             
-            # অ্যাডমিন ভিউ পাঠানো
             await owner.send(embed=embed, view=AdminApprovalView(interaction.guild.id))
-        else:
-            print("❌ Owner ID not found or DM failed.")
 
-# --- ৩. মেইন বাটন (যা ইউজার দেখবে) ---
 class PremiumSelectionView(View):
     def __init__(self):
         super().__init__()
 
+    @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="👑")
+    async def buy_server(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(PaymentModal())
     # শুধুমাত্র একটাই বাটন: Buy Server Premium
     @discord.ui.button(label="🏰 Buy Server Premium", style=discord.ButtonStyle.success, emoji="👑")
     async def buy_server(self, interaction: discord.Interaction, button: Button):
