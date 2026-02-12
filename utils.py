@@ -13,8 +13,8 @@ OWNER_ID = 1311355680640208926  # আপনার Discord ID
 
 # প্রিমিয়াম প্রাইস (এডিট করতে পারেন)
 PRICES = {
-    "user": "50 Taka/Month",
-    "server": "100 Taka/Month"
+    "user": "150 ₹/Month",
+    "server": "200 ₹/Month"
 }
 
 def load_config():
