@@ -3,29 +3,43 @@ from discord.ext import commands
 from discord import app_commands
 from utils import PremiumSelectionView, get_theme_color, load_config
 
-# প্রাইস ভেরিয়েবল সরাসরি এখানে রাখা হলো (ইমপোর্ট এরর এড়াতে)
-PREMIUM_PRICE = "100 Taka/Month"
+# আপনার পেমেন্ট QR কোড
+QR_CODE_URL = "https://cdn.discordapp.com/attachments/1465990068224393343/1471035901735076007/GooglePay_QR.png?ex=698ec9f1&is=698d7871&hm=9c367f3889c5ccb9946a1b2c42a792ac291d415518ec7dd2a08ce93f9be4e6c7&"
 
 class PremiumManagement(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # --- ১. বটের নাম ও পারমিশন চেক ফাংশন ---
     async def update_bot_identity(self, interaction, is_premium):
-        """বটের নাম পরিবর্তন লজিক"""
+        """
+        রিটার্ন করবে: True (যদি পারমিশন থাকে), False (যদি পারমিশন না থাকে)
+        """
         try:
             me = interaction.guild.me
-            if me.guild_permissions.change_nickname:
-                if is_premium:
-                    if me.nick != "✨ Wow Premium":
-                        await me.edit(nick="✨ Wow Premium")
-                else:
-                    if me.nick is not None:
-                        await me.edit(nick=None)
-        except:
-            pass
+            
+            # পারমিশন চেক: বটের কি নাম পাল্টানোর অনুমতি আছে?
+            if not me.guild_permissions.change_nickname:
+                return False # ❌ পারমিশন নেই
 
-    # --- ১. প্রিমিয়াম কেনা ---
-    @app_commands.command(name="buy_premium", description="🛒 Unlock Gold Theme & Features for this Server")
+            # নাম পরিবর্তন লজিক
+            if is_premium:
+                if me.nick != "✨ Wow Premium":
+                    await me.edit(nick="✨ Wow Premium")
+            else:
+                if me.nick is not None:
+                    await me.edit(nick=None)
+            
+            return True # ✅ সব ঠিক আছে
+
+        except Exception as e:
+            print(f"Name Change Error: {e}")
+            return False
+
+    # ====================================================
+    # 2. প্রিমিয়াম কেনার কমান্ড (QR Code সহ)
+    # ====================================================
+    @app_commands.command(name="buy_premium", description="🛒 Upgrade Server to Premium (QR Code Inside)")
     async def buy_premium(self, interaction: discord.Interaction):
         color = get_theme_color(interaction.guild.id)
         
@@ -33,7 +47,8 @@ class PremiumManagement(commands.Cog):
             title="👑 Server Premium Store",
             description=(
                 f"Upgrade **{interaction.guild.name}** to Premium!\n\n"
-                f"💸 **Price:** {PREMIUM_PRICE}\n\n"
+                "**💸 Price:** 100 Taka/Month\n"
+                "**📱 Payment:** Scan the QR Code below 👇\n\n"
                 "**💎 Premium Benefits:**\n"
                 "• ✨ Bot Name changes to **'Wow Premium'**\n"
                 "• 🎨 All Embeds become **GOLD** color\n"
@@ -42,32 +57,54 @@ class PremiumManagement(commands.Cog):
             ),
             color=color
         )
+        
+        # QR Code ইমেজ সেট করা
+        embed.set_image(url=QR_CODE_URL)
+        
         if self.bot.user.avatar:
             embed.set_thumbnail(url=self.bot.user.avatar.url)
             
+        embed.set_footer(text="After payment, click the button below.")
+        
         await interaction.response.send_message(embed=embed, view=PremiumSelectionView())
 
-    # --- ২. স্ট্যাটাস চেক ---
+    # ====================================================
+    # 3. স্ট্যাটাস চেক কমান্ড (পারমিশন ওয়ার্নিং সহ)
+    # ====================================================
     @app_commands.command(name="premium_status", description="📊 Check Server Subscription Status")
     async def premium_status(self, interaction: discord.Interaction):
         config = load_config()
         guild_id = str(interaction.guild.id)
         
+        # ১. কালার এবং স্ট্যাটাস চেক
         theme_color = get_theme_color(interaction.guild.id)
         is_premium = (theme_color == discord.Color.gold())
         
-        await self.update_bot_identity(interaction, is_premium)
+        # ২. নাম আপডেট এবং পারমিশন চেক
+        has_permission = await self.update_bot_identity(interaction, is_premium)
         
+        # ৩. এমবেড তৈরি
         embed = discord.Embed(title="📊 Server Status", color=theme_color)
         
         if is_premium:
-            # সেফটি চেক: যদি এক্সপায়ারি ডেট না থাকে
             try:
                 expiry = config["premium_servers"][guild_id]["expiry"].split("T")[0]
             except:
-                expiry = "Unknown"
-            
+                expiry = "Active"
+                
             embed.add_field(name="🏰 Server Plan", value=f"✅ **PREMIUM ACTIVE**\n📅 Exp: {expiry}", inline=False)
+            
+            # যদি পারমিশন থাকে
+            if has_permission:
+                embed.add_field(name="✨ Bot Name", value="Changed to **'Wow Premium'**", inline=False)
+            else:
+                # ⚠️ যদি পারমিশন না থাকে (লাল ওয়ার্নিং)
+                embed.add_field(
+                    name="⚠️ Permission Missing", 
+                    value="❌ I cannot change my nickname!\nPlease enable **'Change Nickname'** permission for my role.", 
+                    inline=False
+                )
+            
             embed.set_footer(text="✨ Premium is Active! Gold Theme Enabled.")
         else:
             embed.add_field(name="🏰 Server Plan", value="🟦 **Free Version**", inline=False)
@@ -77,3 +114,4 @@ class PremiumManagement(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(PremiumManagement(bot))
+    
