@@ -6,7 +6,7 @@ import json
 import os
 import datetime
 import random
-# Importing premium logic and theme colors from utils
+# utils থেকে ইমপোর্ট করা হচ্ছে
 from utils import load_config, save_config, get_theme_color
 
 DB_FILE = 'economy.json'
@@ -28,7 +28,6 @@ def save_db(data):
 class DailyDashboardModal(Modal, title="💎 Premium Daily Dashboard"):
     def __init__(self):
         super().__init__()
-        # Load existing custom settings if any
         config = load_config()
         d_set = config.get("daily_settings", {})
         
@@ -57,43 +56,47 @@ class DailyDashboardModal(Modal, title="💎 Premium Daily Dashboard"):
         await interaction.response.send_message("✅ **Daily Dashboard Updated Successfully!**", ephemeral=True)
 
 # ==========================================
-# 2. MAIN COG
+# 2. MAIN COG (Hybrid Commands)
 # ==========================================
 class DailyCommand(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     def is_premium(self, guild_id):
-        """Checks if the server has Premium status"""
+        """সার্ভার প্রিমিয়াম কি না চেক করবে"""
+        if not guild_id: return False
         return get_theme_color(guild_id) == discord.Color.gold()
 
-    # --- 💎 Dashboard Command ---
-    @app_commands.command(name="daily_dashboard", description="💎 [PREMIUM] Configure custom image and message")
+    # --- 💎 Dashboard Command (Hybrid) ---
+    @commands.hybrid_command(name="daily_dashboard", description="💎 [PREMIUM] Configure custom image and message")
     @app_commands.checks.has_permissions(administrator=True)
-    async def daily_dashboard(self, interaction: discord.Interaction):
-        if not self.is_premium(interaction.guild.id):
+    async def daily_dashboard(self, ctx: commands.Context):
+        if not self.is_premium(ctx.guild.id):
             embed = discord.Embed(
                 title="🔒 Feature Locked",
                 description="Customizing the daily system is restricted to **Premium Servers**.\n\n⭐ Unlock now with `/buy_premium`.",
                 color=discord.Color.red()
             )
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
+            return await ctx.send(embed=embed, ephemeral=True)
         
-        await interaction.response.send_modal(DailyDashboardModal())
+        # হাইব্রিড কমান্ডে সরাসরি মডাল পাঠানো যায় না, তাই শুধু স্ল্যাশ কমান্ডের ক্ষেত্রে এটি কাজ করবে
+        if ctx.interaction:
+            await ctx.interaction.response.send_modal(DailyDashboardModal())
+        else:
+            await ctx.send("❌ Please use the Slash Command `/daily_dashboard` to open the settings modal.", delete_after=10)
 
-    # --- 💰 Main Daily Command ---
-    @app_commands.command(name="daily", description="Claim your daily coins and rewards")
-    async def daily(self, interaction: discord.Interaction):
+    # --- 💰 Main Daily Command (Hybrid) ---
+    @commands.hybrid_command(name="daily", description="Claim your daily coins and rewards")
+    async def daily(self, ctx: commands.Context):
         data = load_db()
         config = load_config()
-        user_id = str(interaction.user.id)
+        user_id = str(ctx.author.id)
         now = datetime.datetime.now(datetime.timezone.utc)
         
-        # Check Premium status for benefits
-        is_prem = self.is_premium(interaction.guild.id)
-        color = get_theme_color(interaction.guild.id)
+        # প্রিমিয়াম স্ট্যাটাস চেক
+        is_prem = self.is_premium(ctx.guild.id)
+        color = get_theme_color(ctx.guild.id)
         
-        # Initialize user data
         if user_id not in data:
             data[user_id] = {"balance": 0, "streak": 0, "last_daily": None, "lootboxes": 0}
         
@@ -107,17 +110,17 @@ class DailyCommand(commands.Cog):
                 time_left = datetime.timedelta(seconds=86400 - (now.timestamp() - last_daily.timestamp()))
                 hours, remainder = divmod(int(time_left.total_seconds()), 3600)
                 minutes, _ = divmod(remainder, 60)
-                return await interaction.response.send_message(f"⏳ Please wait **{hours}h {minutes}m** before claiming again!", ephemeral=True)
+                return await ctx.send(f"⏳ Please wait **{hours}h {minutes}m** before claiming again!", ephemeral=True)
 
         # Reward Calculation
         streak = user_data.get("streak", 0)
-        multiplier = 2.0 if is_prem else 1.0 # 2x Bonus for Premium Servers
+        multiplier = 2.0 if is_prem else 1.0 # প্রিমিয়ামে ২ গুণ রিওয়ার্ড
         base_reward = (500 + (streak * 50)) * multiplier
         
         boxes = random.randint(5, 10) if is_prem else random.randint(1, 2)
         final_reward = int(base_reward)
         
-        # Update Database
+        # Update DB
         user_data["balance"] += final_reward
         user_data["lootboxes"] += boxes
         user_data["streak"] += 1
@@ -141,13 +144,12 @@ class DailyCommand(commands.Cog):
             color=color
         )
         
-        # Set Image (Premium Custom vs Default)
+        # ইমেজ সেট করা
         final_img = d_set.get("image_url") if is_prem and d_set.get("image_url") else "https://cdn.discordapp.com/attachments/1439489026225868892/1470689376060313683/daily-22-15001.gif"
         embed.set_image(url=final_img)
-        embed.set_footer(text=f"Total Balance: {user_data['balance']:,} coins | {interaction.user.name}")
+        embed.set_footer(text=f"Total Balance: {user_data['balance']:,} coins | {ctx.author.name}")
         
-        await interaction.response.send_message(embed=embed)
+        await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(DailyCommand(bot))
-    
