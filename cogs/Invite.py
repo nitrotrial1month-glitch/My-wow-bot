@@ -4,6 +4,8 @@ from discord import app_commands
 import json
 import os
 from datetime import datetime, timezone
+# Importing premium logic and theme colors
+from utils import load_config, get_theme_color
 
 INVITE_DB = 'invites.json'
 MEMBER_MAP = 'member_map.json'
@@ -31,37 +33,40 @@ class Invites(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member):
         invites_before = self.invites_cache.get(member.guild.id)
-        invites_after = await member.guild.invites()
+        if not invites_before: return
         
-        for invite in invites_before:
-            for new_invite in invites_after:
-                if invite.code == new_invite.code and new_invite.uses > invite.uses:
-                    data = load_data(INVITE_DB)
-                    mapping = load_data(MEMBER_MAP)
-                    gid, inviter_id = str(member.guild.id), str(invite.inviter.id)
-                    mid = str(member.id)
-                    
-                    if gid not in data: data[gid] = {}
-                    if inviter_id not in data[gid]:
-                        data[gid][inviter_id] = {"total": 0, "left": 0, "fake": 0, "bonus": 0, "rejoin": 0}
-                    
-                    # Rejoin Check
-                    if gid in mapping and mid in mapping[gid]:
-                        data[gid][inviter_id]["rejoin"] += 1
-                    else:
-                        # Fake Check (Account younger than 7 days)
-                        diff = datetime.now(timezone.utc) - member.created_at
-                        if diff.days < 7:
-                            data[gid][inviter_id]["fake"] += 1
+        try:
+            invites_after = await member.guild.invites()
+            for invite in invites_before:
+                for new_invite in invites_after:
+                    if invite.code == new_invite.code and new_invite.uses > invite.uses:
+                        data = load_data(INVITE_DB)
+                        mapping = load_data(MEMBER_MAP)
+                        gid, inviter_id = str(member.guild.id), str(invite.inviter.id)
+                        mid = str(member.id)
                         
-                        data[gid][inviter_id]["total"] += 1
-                        if gid not in mapping: mapping[gid] = {}
-                        mapping[gid][mid] = inviter_id
-                    
-                    save_data(INVITE_DB, data)
-                    save_data(MEMBER_MAP, mapping)
-                    self.invites_cache[member.guild.id] = invites_after
-                    return
+                        if gid not in data: data[gid] = {}
+                        if inviter_id not in data[gid]:
+                            data[gid][inviter_id] = {"total": 0, "left": 0, "fake": 0, "bonus": 0, "rejoin": 0}
+                        
+                        # Rejoin Check
+                        if gid in mapping and mid in mapping[gid]:
+                            data[gid][inviter_id]["rejoin"] += 1
+                        else:
+                            # Fake Check (Account younger than 7 days)
+                            diff = datetime.now(timezone.utc) - member.created_at
+                            if diff.days < 7:
+                                data[gid][inviter_id]["fake"] += 1
+                            
+                            data[gid][inviter_id]["total"] += 1
+                            if gid not in mapping: mapping[gid] = {}
+                            mapping[gid][mid] = inviter_id
+                        
+                        save_data(INVITE_DB, data)
+                        save_data(MEMBER_MAP, mapping)
+                        self.invites_cache[member.guild.id] = invites_after
+                        return
+        except: pass
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
@@ -74,50 +79,55 @@ class Invites(commands.Cog):
                 data[gid][inviter_id]["left"] += 1
                 save_data(INVITE_DB, data)
 
-    @commands.hybrid_command(name="invites", aliases=["i"], description="Detailed Invite Analytics")
+    @commands.hybrid_command(name="invites", aliases=["i"], description="Check detailed invite analytics")
+    @app_commands.describe(member="The member whose invites you want to check")
     async def invite_check(self, ctx, member: discord.Member = None):
-        member = member or ctx.author
+        target = member or ctx.author
         data = load_data(INVITE_DB)
-        gid, uid = str(ctx.guild.id), str(member.id)
+        gid, uid = str(ctx.guild.id), str(target.id)
         
+        # Premium and Theme Logic
+        color = get_theme_color(ctx.guild.id)
+        is_prem = (color == discord.Color.gold())
+        
+        # Stats Retrieval
         stats = data.get(gid, {}).get(uid, {"total": 0, "left": 0, "fake": 0, "bonus": 0, "rejoin": 0})
-        
         total = stats["total"] + stats["bonus"]
-        left = stats["left"]
-        fake = stats["fake"]
-        bonus = stats["bonus"]
-        rejoin = stats["rejoin"]
-        valid = (stats["total"] - left - fake) + bonus
+        valid = (stats["total"] - stats["left"] - stats["fake"]) + stats["bonus"]
         if valid < 0: valid = 0
 
-        # আপনার দেওয়া ইমোজিগুলো এখানে সেট করা হয়েছে
+        # Emojis
         static_arrow = "<:arrow:1467198187470196974>"
         animated_arrow = "<a:arrow:1468223732546932910>"
+        dot = "<a:dot:1433392100451549234>"
+        
+        # Pro Design Layout (Nova/Falcon Style)
+        status_text = "Premium Tracking" if is_prem else "Standard Tracking"
+        
+        description = (
+            f"### 📩 {target.display_name}'s Invite Stats\n"
+            f"────────────────────\n"
+            f"{dot} **Tracking Status:** {status_text}\n"
+            f"{dot} **Total Registered:** `{total}`\n\n"
+            f"### {animated_arrow} Activity Details\n"
+            f"{static_arrow} **Joins:** `{stats['total']}`\n"
+            f"{static_arrow} **Left:** `{stats['left']}`\n"
+            f"{static_arrow} **Fake:** `{stats['fake']}`\n"
+            f"{static_arrow} **Bonus:** `{stats['bonus']}`\n"
+            f"{static_arrow} **Rejoin:** `{stats['rejoin']}`\n"
+            f"────────────────────\n"
+            f"### {animated_arrow} **Final Valid Invites: `{valid}`**\n"
+            f"────────────────────"
+        )
 
-        embed = discord.Embed(
-            title=f"📩 {member.display_name}'s Invites — {total}",
-            color=0x2b2d31
-        )
-        embed.set_thumbnail(url=member.display_avatar.url)
+        embed = discord.Embed(description=description, color=color)
+        embed.set_thumbnail(url=target.display_avatar.url)
         
-        # মাঝখানের তথ্য সাজানো
-        embed.add_field(name=f"{static_arrow} Joins", value=f"`{stats['total']}`", inline=True)
-        embed.add_field(name=f"{static_arrow} Left", value=f"`{left}`", inline=True)
-        embed.add_field(name=f"{static_arrow} Fake", value=f"`{fake}`", inline=True)
-        embed.add_field(name=f"{static_arrow} Bonus", value=f"`{bonus}`", inline=True)
-        embed.add_field(name=f"{static_arrow} Rejoin", value=f"`{rejoin}`", inline=True)
-        
-        # ভ্যালিড ইনভাইট সবার নিচে অ্যানিমেটেড অ্যারো দিয়ে
-        embed.add_field(
-            name="━━━━━━━━━━━━━━━━━━", 
-            value=f"{animated_arrow} **Valid Invites:** `{valid}`", 
-            inline=False
-        )
-        
-        embed.set_footer(text=f"Invite Tracker | Requested by {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
+        # Footer formatting
+        embed.set_footer(text=f"Requested by {ctx.author.name} | Today at {datetime.now().strftime('%I:%M %p')}", icon_url=ctx.author.display_avatar.url)
         
         await ctx.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(Invites(bot))
-    
+                            
