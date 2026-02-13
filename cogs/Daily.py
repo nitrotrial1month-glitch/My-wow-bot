@@ -6,91 +6,100 @@ import json
 import os
 import datetime
 import random
-from utils import check_advanced_premium 
+# Importing premium logic and theme colors from utils
+from utils import load_config, save_config, get_theme_color
 
-# ফাইল পাথ
 DB_FILE = 'economy.json'
-CONFIG_FILE = 'daily_config.json'
 
-# --- JSON লোড/সেভ ফাংশন ---
-def load_json(filename):
-    if not os.path.exists(filename): return {}
-    with open(filename, 'r', encoding='utf-8') as f:
+# --- JSON Helpers ---
+def load_db():
+    if not os.path.exists(DB_FILE): return {}
+    with open(DB_FILE, 'r', encoding='utf-8') as f:
         try: return json.load(f)
         except: return {}
 
-def save_json(filename, data):
-    with open(filename, 'w', encoding='utf-8') as f:
+def save_db(data):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=4)
 
 # ==========================================
-# 1. PERSONAL DASHBOARD (Custom Image Setter)
+# 1. PREMIUM DASHBOARD MODAL
 # ==========================================
-class PersonalCustomizeModal(Modal, title="🎨 Customize Your Daily"):
-    img_input = TextInput(
-        label="Custom GIF/Image URL", 
-        placeholder="https://media.giphy.com/...",
-        required=True
-    )
+class DailyDashboardModal(Modal, title="💎 Premium Daily Dashboard"):
+    def __init__(self):
+        super().__init__()
+        # Load existing custom settings if any
+        config = load_config()
+        d_set = config.get("daily_settings", {})
+        
+        self.img_input = TextInput(
+            label="Custom GIF/Image URL", 
+            default=d_set.get("image_url", ""),
+            placeholder="https://media.giphy.com/...",
+            required=False
+        )
+        self.msg_input = TextInput(
+            label="Custom Daily Message", 
+            default=d_set.get("message", "Enjoy your daily rewards!"),
+            style=discord.TextStyle.paragraph,
+            required=False
+        )
+        self.add_item(self.img_input)
+        self.add_item(self.msg_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # ইউজারের দেওয়া লিঙ্ক ডাটাবেসে সেভ করা হবে
-        data = load_json(DB_FILE)
-        uid = str(interaction.user.id)
-        
-        if uid not in data:
-            data[uid] = {"balance": 0, "streak": 0, "last_daily": None, "lootboxes": 0}
-            
-        # কাস্টম ইমেজ সেভ করা
-        data[uid]["custom_image"] = self.img_input.value
-        save_json(DB_FILE, data)
-        
-        await interaction.response.send_message("✅ **Success!** Your personal Daily image has been set.", ephemeral=True)
+        config = load_config()
+        config["daily_settings"] = {
+            "image_url": self.img_input.value,
+            "message": self.msg_input.value
+        }
+        save_config(config)
+        await interaction.response.send_message("✅ **Daily Dashboard Updated Successfully!**", ephemeral=True)
 
 # ==========================================
-# 2. VIEW WITH BUTTONS
-# ==========================================
-class DailyView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    # 🎨 কাস্টমাইজ বাটন (শুধুমাত্র প্রিমিয়াম ইউজারদের জন্য)
-    @discord.ui.button(label="Customize Look", style=discord.ButtonStyle.secondary, emoji="🎨", custom_id="daily_custom_btn")
-    async def customize_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # প্রিমিয়াম চেক
-        status = check_advanced_premium(interaction.user.id)
-        
-        if not status["active"]:
-            return await interaction.response.send_message(
-                "🔒 **Premium Feature!**\nOnly Premium members can set a custom GIF for their daily command.\nUse `/buy_premium` to unlock.", 
-                ephemeral=True
-            )
-        
-        # মডাল ওপেন করা
-        await interaction.response.send_modal(PersonalCustomizeModal())
-
-# ==========================================
-# 3. MAIN COMMAND
+# 2. MAIN COG
 # ==========================================
 class DailyCommand(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="daily", description="Claim daily rewards & lootboxes!")
-    async def daily(self, ctx: commands.Context):
-        data = load_json(DB_FILE)
-        config = load_json(CONFIG_FILE) # গ্লোবাল কনফিগ (ডিফল্ট ছবির জন্য)
-        
-        user_id = str(ctx.author.id)
-        now = datetime.datetime.now(datetime.timezone.utc)
+    def is_premium(self, guild_id):
+        """Checks if the server has Premium status"""
+        return get_theme_color(guild_id) == discord.Color.gold()
 
-        # ডাটা তৈরি (যদি না থাকে)
+    # --- 💎 Dashboard Command ---
+    @app_commands.command(name="daily_dashboard", description="💎 [PREMIUM] Configure custom image and message")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def daily_dashboard(self, interaction: discord.Interaction):
+        if not self.is_premium(interaction.guild.id):
+            embed = discord.Embed(
+                title="🔒 Feature Locked",
+                description="Customizing the daily system is restricted to **Premium Servers**.\n\n⭐ Unlock now with `/buy_premium`.",
+                color=discord.Color.red()
+            )
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        await interaction.response.send_modal(DailyDashboardModal())
+
+    # --- 💰 Main Daily Command ---
+    @app_commands.command(name="daily", description="Claim your daily coins and rewards")
+    async def daily(self, interaction: discord.Interaction):
+        data = load_db()
+        config = load_config()
+        user_id = str(interaction.user.id)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        
+        # Check Premium status for benefits
+        is_prem = self.is_premium(interaction.guild.id)
+        color = get_theme_color(interaction.guild.id)
+        
+        # Initialize user data
         if user_id not in data:
             data[user_id] = {"balance": 0, "streak": 0, "last_daily": None, "lootboxes": 0}
         
         user_data = data[user_id]
         
-        # --- Cooldown Check ---
+        # Cooldown Check (24 Hours)
         last_daily_str = user_data.get("last_daily")
         if last_daily_str:
             last_daily = datetime.datetime.fromisoformat(last_daily_str)
@@ -98,69 +107,46 @@ class DailyCommand(commands.Cog):
                 time_left = datetime.timedelta(seconds=86400 - (now.timestamp() - last_daily.timestamp()))
                 hours, remainder = divmod(int(time_left.total_seconds()), 3600)
                 minutes, _ = divmod(remainder, 60)
-                return await ctx.send(f"⏳ Please wait **{hours}h {minutes}m**!", ephemeral=True)
+                return await interaction.response.send_message(f"⏳ Please wait **{hours}h {minutes}m** before claiming again!", ephemeral=True)
 
-        # --- Premium Logic (Multipliers) ---
-        status = check_advanced_premium(ctx.author.id)
-        
+        # Reward Calculation
         streak = user_data.get("streak", 0)
-        base_reward = 500 + (streak * 50)
+        multiplier = 2.0 if is_prem else 1.0 # 2x Bonus for Premium Servers
+        base_reward = (500 + (streak * 50)) * multiplier
         
-        multiplier = 1.0
-        tier_name = "Free"
-        boxes = random.randint(1, 2)
-        color = 0x2ecc71 # Green
-
-        if status["active"]:
-            tier = status["tier"]
-            if tier == "basic":
-                multiplier = 2.0
-                tier_name = "🥉 Basic"
-                color = 0xe67e22
-            elif tier == "pro":
-                multiplier = 3.0
-                tier_name = "🥈 Pro"
-                color = 0x3498db
-            elif tier == "ultra":
-                multiplier = 4.0
-                boxes = random.randint(5, 10)
-                tier_name = "🥇 Ultra"
-                color = 0xF1C40F
-
-        final_reward = int(base_reward * multiplier)
+        boxes = random.randint(5, 10) if is_prem else random.randint(1, 2)
+        final_reward = int(base_reward)
         
-        # ডাটা আপডেট
+        # Update Database
         user_data["balance"] += final_reward
         user_data["lootboxes"] += boxes
         user_data["streak"] += 1
         user_data["last_daily"] = now.isoformat()
-        
-        save_json(DB_FILE, data)
+        save_db(data)
 
-        # --- IMAGE LOGIC (Personal vs Global) ---
-        # ১. ডিফল্ট ইমেজ (অ্যাডমিন যেটা সেট করেছে)
-        final_image = config.get('image_url', "https://cdn.discordapp.com/attachments/1439489026225868892/1470689376060313683/daily-22-15001.gif")
+        # Design (Falcon/Nova Style)
+        d_set = config.get("daily_settings", {})
+        custom_msg = d_set.get("message", "Enjoy your daily rewards!")
         
-        # ২. যদি প্রিমিয়াম ইউজারের পার্সোনাল ইমেজ থাকে, তবে সেটা নিবে
-        if status["active"] and "custom_image" in user_data:
-            if user_data["custom_image"]: # যদি খালি না হয়
-                final_image = user_data["custom_image"]
-
-        # --- Embed ---
         embed = discord.Embed(
-            title="✨ DAILY CLAIMED ✨", 
-            description=f"User: {ctx.author.mention}\nTier: **{tier_name}** ({int(multiplier)}x Boost)", 
+            title="✨ DAILY REWARD CLAIMED ✨",
+            description=(
+                f"### {custom_msg}\n"
+                f"────────────────────\n"
+                f"• **Coins Received:** {final_reward:,} 💰\n"
+                f"• **Lootboxes:** +{boxes} 📦\n"
+                f"• **Current Streak:** {user_data['streak']} Days 🔥\n"
+                f"────────────────────"
+            ),
             color=color
         )
-        embed.add_field(name="💰 Received", value=f"**{final_reward:,}** Coins", inline=True)
-        embed.add_field(name="📦 Lootboxes", value=f"**+{boxes}** New", inline=True)
-        embed.add_field(name="🔥 Streak", value=f"**{user_data['streak']}** Days", inline=True)
         
-        embed.set_image(url=final_image)
-        embed.set_footer(text=f"Total: {user_data['balance']:,} coins")
+        # Set Image (Premium Custom vs Default)
+        final_img = d_set.get("image_url") if is_prem and d_set.get("image_url") else "https://cdn.discordapp.com/attachments/1439489026225868892/1470689376060313683/daily-22-15001.gif"
+        embed.set_image(url=final_img)
+        embed.set_footer(text=f"Total Balance: {user_data['balance']:,} coins | {interaction.user.name}")
         
-        # বাটনসহ পাঠানো
-        await ctx.send(embed=embed, view=DailyView())
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(DailyCommand(bot))
