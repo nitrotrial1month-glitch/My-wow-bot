@@ -2,139 +2,105 @@ import discord
 from discord.ext import commands
 import json
 import os
-from typing import Optional
+import asyncio
+from utils import load_config # utils.py থেকে কনফিগ লোড
 
-# ================= 1. ডাটাবাস/কনফিগ হেল্পার ফাংশন =================
-CONFIG_FILE = 'config.json'
-PREFIX_FILE = 'prefixes.json'
-
-def load_config():
-    """config.json ফাইল লোড করে এবং না থাকলে ডিফল্ট ডাটা তৈরি করে"""
-    
-    # ডিফল্ট ডাটা স্ট্রাকচার (তোমার আগের সব ডাটার সাথে নতুন প্রিমিয়াম ডাটা যোগ করা হলো)
-    default_data = {
-        "anti_link": {"enabled": False, "blocked_list": []},
-        "bad_words": [],
-        "auto_role_id": None,
-        "welcome": {"channel_id": None, "title": "Welcome!", "description": "Hi {member}!", "image_url": None, "color": 0x00ff00},
-        "leave": {"channel_id": None, "title": "Goodbye!", "description": "{member} left.", "image_url": None, "color": 0xff0000},
-        # --- NEW PREMIUM LOGIC ADDED HERE ---
-        "premium_users": {},   # ইউজারদের প্রিমিয়াম ডাটা
-        "premium_servers": {}  # সার্ভারের প্রিমিয়াম ডাটা
-        # ------------------------------------
-    }
-
-    if not os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(default_data, f, indent=4)
-        return default_data
-    
-    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-        try: 
-            data = json.load(f)
-            
-            # --- নিরাপদ আপডেট: যদি আগের ফাইলে নতুন প্রিমিয়াম অপশন না থাকে, তবে তা যোগ করা হবে ---
-            updated = False
-            if "premium_users" not in data:
-                data["premium_users"] = {}
-                updated = True
-            if "premium_servers" not in data:
-                data["premium_servers"] = {}
-                updated = True
-                
-            # যদি কিছু আপডেট হয়, তবে তা ফাইলে সেভ করা হবে
-            if updated:
-                with open(CONFIG_FILE, 'w', encoding='utf-8') as fw:
-                    json.dump(data, fw, indent=4)
-                    
-            return data
-        except: 
-            return default_data
-
-def save_config(data):
-    """config.json এ ডাটা সেভ করার সেন্ট্রাল ফাংশন"""
-    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=4)
-
+# ================= 1. প্রিফিক্স সেটআপ =================
 def get_prefix(bot, message):
-    """সার্ভার অনুযায়ী প্রিফিক্স লোড করা"""
+    """সার্ভার অনুযায়ী কাস্টম প্রিফিক্স লোড"""
     try:
-        with open(PREFIX_FILE, 'r') as f:
+        with open('prefixes.json', 'r') as f:
             prefixes = json.load(f)
-        return prefixes.get(str(message.guild.id), "Wow")
+        return prefixes.get(str(message.guild.id), "!") # ডিফল্ট প্রিফিক্স "!"
     except:
-        return "Wow"
+        return "!"
 
-# ================= 2. মেইন বট ক্লাস সেটআপ =================
-
-class MyBot(commands.Bot):
+# ================= 2. মেইন বট ক্লাস =================
+class NovaBot(commands.Bot):
     def __init__(self):
-        intents = discord.Intents.default()
+        # ইনটেন্টস (সব পারমিশন অন করা)
+        intents = discord.Intents.all()
         intents.message_content = True
         intents.members = True 
-        
-        super().__init__(
-            command_prefix=get_prefix, 
-            intents=intents,
-            strip_after_prefix=True  # 'Wow cf' বা 'Wowcf' উভয়ই ডিটেক্ট করবে
-        )
-        
-    async def setup_hook(self):
-        """বট চালু হওয়ার সময় Cog এবং Views লোড করা"""
-        
-        # ১. টিকেট সিস্টেমের ভিউ রেজিস্টার করা (যাতে Interaction Failed না আসে)
-        try:
-            from cogs.ticket import TicketLaunch, TicketControl
-            self.add_view(TicketLaunch())
-            self.add_view(TicketControl()) 
-            print("✅ Persistent Ticket Views Registered!")
-        except Exception as e:
-            print(f"⚠️ Ticket View Error: {e}")
+        intents.presences = True
 
-        # ২. সমস্ত Cog (welcome, moderation, afk, give, premium) লোড করা
+        super().__init__(
+            command_prefix=get_prefix,
+            intents=intents,
+            help_command=None,  # ❌ ডিফল্ট হেল্প কমান্ড বন্ধ করা হয়েছে
+            case_insensitive=True, # ছোট/বড় হাতের অক্ষর সমস্যা করবে না
+            strip_after_prefix=True
+        )
+
+    async def setup_hook(self):
+        """Cog এবং Extension লোড করা"""
+        print("🔄 Loading Extensions...")
+        
+        # 'cogs' ফোল্ডারের সব ফাইল লোড করা
+        # আপনার বানানো ফাইলগুলো (DailyCommand.py, Profile.py, etc.) একটি 'cogs' ফোল্ডারে রাখবেন
         if os.path.exists('./cogs'):
             for filename in os.listdir('./cogs'):
                 if filename.endswith('.py'):
                     try:
                         await self.load_extension(f'cogs.{filename[:-3]}')
-                        print(f"🚀 Loaded Cog: {filename}")
+                        print(f"  ✅ Loaded: {filename}")
                     except Exception as e:
-                        print(f"❌ Error Loading {filename}: {e}")
-        
-        # ৩. স্ল্যাশ কমান্ড সিঙ্ক করা
-        await self.tree.sync()
-        print("🛰️ Slash Commands Synced Successfully!")
+                        print(f"  ❌ Failed to load {filename}: {e}")
+        else:
+            print("⚠️ 'cogs' folder not found! Please create one.")
 
-# ================= 3. গ্লোবাল ইভেন্ট এবং রান =================
+        # স্ল্যাশ কমান্ড সিঙ্ক করা
+        print("🔄 Syncing Slash Commands...")
+        try:
+            synced = await self.tree.sync()
+            print(f"  🛰️ Synced {len(synced)} Slash Commands!")
+        except Exception as e:
+            print(f"  ⚠️ Sync Error: {e}")
 
-bot = MyBot()
+# ================= 3. গ্লোবাল রানার =================
+
+bot = NovaBot()
 
 @bot.event
 async def on_ready():
-    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print(f"🟢 Logged in as: {bot.user.name}")
-    print(f"🆔 Bot ID: {bot.user.id}")
-    print(f"📡 Discord Version: {discord.__version__}")
-    print(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    # কনসোল ক্লিয়ার করে সুন্দর লগ দেখানো
+    os.system('cls' if os.name == 'nt' else 'clear')
     
-    # config.json চেক করা
-    load_config()
-    print("📂 config.json is Ready (Premium Data Supported)!")
+    print(f"""
+    ╔═════════════════════════════════════════╗
+    ║        🚀 NOVA SYSTEM ACTIVATED 🚀      ║
+    ╠═════════════════════════════════════════╣
+    ║ 🤖 Bot Name   : {bot.user.name}             
+    ║ 🆔 Bot ID     : {bot.user.id}               
+    ║ 📡 Discord.py : {discord.__version__}       
+    ║ 💎 Premium    : Active (System Ready)   
+    ╚═════════════════════════════════════════╝
+    """)
+    
+    # স্ট্যাটাস সেট করা (Nova Style)
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.watching, 
+            name="Novaworld | /help"
+        ),
+        status=discord.Status.idle
+    )
 
 @bot.event
 async def on_message(message):
-    # বট নিজে নিজের মেসেজ রিপ্লাই দিবে না
-    if message.author.bot:
-        return
-    
-    # প্রিফিক্স কমান্ড প্রসেস করা
+    if message.author.bot: return
     await bot.process_commands(message)
 
-# বটের রানার (Railway/Local এনভায়রনমেন্ট থেকে টোকেন নিবে)
-TOKEN = os.getenv('DISCORD_TOKEN')
+# ================= 4. টোকেন রান =================
+# আপনার টোকেন এখানে সরাসরি দিন অথবা .env ফাইল ব্যবহার করুন
+TOKEN = "YOUR_BOT_TOKEN_HERE" 
 
 if __name__ == "__main__":
-    if TOKEN:
+    try:
+        # যদি এনভায়রনমেন্ট ভেরিয়েবল ব্যবহার করেন
+        # bot.run(os.getenv('DISCORD_TOKEN'))
+        
+        # অথবা সরাসরি টোকেন দিয়ে রান করতে চাইলে:
         bot.run(TOKEN)
-    else:
-        print("❌ ERROR: No DISCORD_TOKEN found in your environment variables!")
+    except Exception as e:
+        print(f"❌ Token Error: {e}")
